@@ -753,6 +753,14 @@ main{padding-block:18px 40px;padding-left:max(16px,env(safe-area-inset-left,0px)
 .layers label{display:flex;gap:6px;align-items:center;cursor:pointer;white-space:nowrap}
 .veh-ico{background:var(--navy);color:#fff;font:600 10.5px/1 var(--f-mono);padding:3px 5px;border-radius:5px;white-space:nowrap;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(16,39,61,.35);transform:translate(-50%,-50%);position:absolute}
 .veh-ico.dot{width:11px;height:11px;padding:0;border-radius:50%}
+.trk{position:absolute;transform:translate(-50%,-50%);cursor:pointer;--c:var(--accent)}
+.trk .bd{width:22px;height:36px;transition:transform .5s ease;filter:drop-shadow(0 1px 2px rgba(10,25,40,.55))}
+.trk .bd svg{display:block;width:100%;height:100%}
+.trk .lb{position:absolute;left:50%;top:calc(50% + 17px);transform:translateX(-50%);background:var(--navy);color:#fff;font:700 10px/1 var(--f-mono);padding:2px 4px;border-radius:4px;white-space:nowrap;border:1px solid #fff}
+.trk.sm .bd{width:13px;height:21px}
+.trk.warn{--c:var(--warn)} .trk.crit{--c:var(--crit)} .trk.door{--c:#7a4cc2} .trk.idle{--c:#6d7f90}
+.trk.me{--c:#2563EB} .trk.me .lb{background:#2563EB} .trk.drv{--c:#E8590C} .trk.drv .lb{background:#E8590C}
+.trk.crit .bd{animation:trkp 1s infinite}@keyframes trkp{50%{filter:drop-shadow(0 0 5px var(--crit))}}
 .veh-ico.warn{background:var(--warn)} .veh-ico.crit{background:var(--crit)} .veh-ico.door{background:#7a4cc2} .veh-ico.idle{background:#6d7f90}
 .hub-ico{background:var(--accent);color:#fff;font:700 11px/1 var(--f-body);padding:5px 7px;border-radius:6px;white-space:nowrap;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3);transform:translate(-50%,-50%);position:absolute}
 .hub-ico.main{background:var(--navy);font-size:12px}
@@ -1026,7 +1034,7 @@ body.driver-mode{background:#EEF2F5}
   <div class="grid2">
     <div class="panel"><div class="ph"><h3>홍천 배송 지도</h3><span class="sub">학교 색: 배송 상태</span><div class="r"><button class="btn sm" data-big>크게 보기</button></div></div>
       <div class="mapwrap hubwrap"><div class="map" id="mapHub"></div>
-        <div class="legend"><span><i style="background:#E8590C"></i>기사 앱 위치</span><span><i style="background:#B9C5CF"></i>대기·배차</span><span><i style="background:var(--accent)"></i>이동 중</span><span><i style="background:#7a4cc2"></i>하차 중</span><span><i style="background:var(--ok)"></i>인수 완료</span></div>
+        <div class="legend"><span><i style="background:#12283F;border-radius:2px;height:4px;width:14px"></i>지나온 경로</span><span><i style="background:repeating-linear-gradient(90deg,#2DD4BF 0 5px,transparent 5px 8px);border-radius:0;height:3px;width:14px"></i>남은 경로</span><span><i style="background:#E8590C"></i>기사 앱 위치</span><span><i style="background:#B9C5CF"></i>대기·배차</span><span><i style="background:var(--accent)"></i>이동 중</span><span><i style="background:#7a4cc2"></i>하차 중</span><span><i style="background:var(--ok)"></i>인수 완료</span></div>
       </div></div>
     <div class="stack">
       <div class="panel"><div class="ph"><h3>코스 진행</h3><span class="sub">카드를 누르면 지도에서 코스를 강조</span></div><div class="pb"><div class="course-cards" id="courseCards"></div></div></div>
@@ -1452,6 +1460,7 @@ function stepVehicle(v, dt){
       if (!v.door && R() < .006 * dt){v.door = true;v._close = SIM + 2 + R() * 2.5;} if (v.door && SIM >= v._close){v.door = false;}}
     if (R() < .002 * dt) v.status = v.status === '운행' ? '대기' : '운행';
   }
+  vehTrack(v);
   // 센서
   const out = CFG.outTemp;
   if (v.door) v.temp += 0.42 * dt * clamp((out - v.temp) / (out - v.set + .01), 0, 1.4);
@@ -1633,12 +1642,51 @@ function schoolPopup(sid){
   return `<b>${esc(s.name)}</b> <span class="tag">${s.lv}</span><br>${esc(s.addr)}<br><span class="mono">${s.tel}</span><br>코스 ${COURSE_OF[sid]}${s.approx ? '<br><span class="muted">위치: 주소 기준 근사</span>' : ''}${d ? '<hr style="border:0;border-top:1px solid #eee">' + d : ''}<div style="margin-top:6px"><button class="btn sm pri" data-school="${sid}">식자재·온습도 상세</button></div>`;
 }
 function vehPopup(v){return `<b>${v.id}</b> ${v.plate}<br>${v.region} · ${v.cap}${v.driver ? ' · ' + v.driver : ''}<br>적재함 <b>${fmt1(v.temp)}°C</b> (설정 ${fmt1(v.set)}) · 습도 ${Math.round(v.hum)}%<br>문 ${v.door ? '<b>열림</b>' : '닫힘'} · ${v.status}`;}
+// ── 냉장탑차 모형 아이콘(진행 방향으로 회전) + 이동 경로 ──
+const TRUCK_SVG = '<svg viewBox="0 0 24 40" aria-hidden="true"><rect x="1.2" y="12" width="3" height="5" rx="1" fill="#1d2733"/><rect x="19.8" y="12" width="3" height="5" rx="1" fill="#1d2733"/><rect x="1.2" y="30" width="3" height="6" rx="1" fill="#1d2733"/><rect x="19.8" y="30" width="3" height="6" rx="1" fill="#1d2733"/><rect x="3.5" y="13" width="17" height="25.5" rx="2" fill="#fff" style="stroke:var(--c)" stroke-width="2"/><rect x="6.5" y="17" width="11" height="2" rx="1" style="fill:var(--c)" opacity=".85"/><rect x="6.5" y="21.5" width="11" height="2" rx="1" style="fill:var(--c)" opacity=".55"/><path d="M8 28.5h8M12 25.5v6M9.6 26.6l4.8 3.8M14.4 26.6l-4.8 3.8" style="stroke:var(--c)" stroke-width="1.1" stroke-linecap="round"/><rect x="4.5" y="1.5" width="15" height="11" rx="3.5" style="fill:var(--c)" stroke="#fff" stroke-width="1"/><rect x="6.5" y="3.2" width="11" height="3.2" rx="1.2" fill="#d6ecff"/><rect x="3" y="5.5" width="1.8" height="2.2" rx=".6" style="fill:var(--c)"/><rect x="19.2" y="5.5" width="1.8" height="2.2" rx=".6" style="fill:var(--c)"/></svg>';
+function truckIcon(label, cls, hd){return L.divIcon({className:'', html:`<div class="trk ${cls || ''}"><div class="bd" style="transform:rotate(${Math.round(hd || 0)}deg)">${TRUCK_SVG}</div>${label ? `<span class="lb">${label}</span>` : ''}</div>`, iconSize:[0, 0]});}
+function truckSet(mk, cls, hd){const el = mk.getElement()?.firstChild;if (!el) return;const c = 'trk ' + (cls || '');if (el.className !== c) el.className = c;const bd = el.firstChild;const t = `rotate(${Math.round(hd || 0)}deg)`;if (bd && bd.style.transform !== t) bd.style.transform = t;}
+function headingOf(a, b){const dy = b[0] - a[0], dx = (b[1] - a[1]) * Math.cos(a[0] * Math.PI / 180);return Math.hypot(dx, dy) < 2e-6 ? null : Math.atan2(dx, dy) * 180 / Math.PI;}
+function vehTrack(v){
+  const cur = [v.lat, v.lng];
+  if (v._lp){const h = headingOf(v._lp, cur);if (h != null){v._hd = h;v._lp = cur;}} else v._lp = cur;
+  const r = v.run;const key = r ? [r.course, r.meal, r.date, (r.stops || []).join(',')].join('|') : v.status === '운행' ? 'wander' : 'idle';
+  if (v._tk !== key){v._tk = key;v._trk = r && r.from ? [[r.from.lat, r.from.lng]] : [];}
+  if (key === 'idle') return;
+  const t = v._trk, l = t[t.length - 1];
+  if (!l || Math.abs(l[0] - v.lat) + Math.abs(l[1] - v.lng) > 1.5e-4){t.push(cur);if (t.length > (r ? 600 : 120)) t.shift();}
+}
+function vehRest(v){
+  const r = v.run;if (!r) return [];
+  const sp = id => {const d = DEL.find(x => x.id === id);const s = d && SCH[d.sid];return s ? [s.lat, s.lng] : null;};
+  if (r.phase === 'return') return [[v.lat, v.lng], [HUB.lat, HUB.lng]];
+  const pts = [[v.lat, v.lng]];if (r.phase === 'trunk' && r.to) pts.push([r.to.lat, r.to.lng]);
+  (r.stops || []).slice(r.i || 0).forEach(id => {const p = sp(id);if (p) pts.push(p);});pts.push([HUB.lat, HUB.lng]);
+  return pts;
+}
+function syncVehPaths(M, list, dot){
+  if (!M.pathG) {M.pathG = L.layerGroup().addTo(M.m);M.paths = {};}
+  const seen = new Set();
+  list.forEach(v => {
+    const trk = v._trk || [];if (trk.length < 2 && !v.run) return;seen.add(v.id);
+    let P = M.paths[v.id];
+    if (!P){P = M.paths[v.id] = {
+      rest:L.polyline([], {color:'#2DD4BF', weight:dot ? 1.5 : 3, opacity:.9, dashArray:dot ? '3 4' : '7 6', interactive:false}).addTo(M.pathG),
+      casing:L.polyline([], {color:'#ffffff', weight:dot ? 3.5 : 6.5, opacity:.75, interactive:false}).addTo(M.pathG),
+      trail:L.polyline([], {color:'#12283F', weight:dot ? 2 : 4, opacity:.95, interactive:false}).addTo(M.pathG)};}
+    const pts = trk.concat([[v.lat, v.lng]]);P.trail.setLatLngs(pts);P.casing.setLatLngs(pts);
+    const st = vState(v);P.trail.setStyle({color:st === 'crit' ? '#E0453C' : st === 'warn' ? '#E59A1B' : '#12283F'});
+    P.rest.setLatLngs(dot ? [] : vehRest(v));
+  });
+  Object.keys(M.paths).forEach(id => {if (!seen.has(id)){Object.values(M.paths[id]).forEach(l => M.pathG.removeLayer(l));delete M.paths[id];}});
+}
 function syncVehMarkers(M, filter, dot){
   VEH.filter(filter).forEach(v => {
-    const cls = 'veh-ico ' + vState(v) + (dot ? ' dot' : '');
-    if (!M.veh[v.id]) M.veh[v.id] = L.marker([v.lat, v.lng], {icon:divIcon(dot ? '' : v.id, cls), zIndexOffset:1200}).bindPopup(() => vehPopup(v)).bindTooltip(v.id + ' · ' + fmt1(v.temp) + '°C').addTo(M.m);
-    else {M.veh[v.id].setLatLng([v.lat, v.lng]);const el = M.veh[v.id].getElement()?.firstChild;if (el && el.className !== cls) el.className = cls;}
+    const cls = vState(v) + (dot ? ' sm' : '');
+    if (!M.veh[v.id]) M.veh[v.id] = L.marker([v.lat, v.lng], {icon:truckIcon(dot ? '' : v.id, cls, v._hd), zIndexOffset:1200}).bindPopup(() => vehPopup(v)).bindTooltip(() => v.id + ' · ' + fmt1(v.temp) + '°C · ' + (v.run ? '운행 중' : v.status)).addTo(M.m);
+    else {M.veh[v.id].setLatLng([v.lat, v.lng]);truckSet(M.veh[v.id], cls, v._hd);}
   });
+  syncVehPaths(M, VEH.filter(filter), dot);
 }
 
 /* ---------- 렌더: 광역 ---------- */
@@ -1691,12 +1739,29 @@ function hcTopData(src){
       if (!m.has(k)) m.set(k, {code:o.code, name:o.item, spec:o.spec, unit:o.unit, storage:o.storage, qty:0, amt:0, cnt:0, sch:new Set(), dates:new Set()});
       const a = m.get(k);a.qty += +o.qty || 0;a.amt += +o.tot || 0;a.cnt++;a.sch.add(o.school);if (o.date) a.dates.add(o.date);});
   } else {
+    const up = hcUnitPrices();
     Object.entries(STD.orders).forEach(([sid, o]) => (o.lines || []).forEach(l => {if (!hcOrigin(l.code, l.name)) return;const k = l.code || l.name;
-      const price = +(STD.center[l.code]?.price) || 0;
-      if (!m.has(k)) m.set(k, {code:l.code, name:l.name, spec:l.spec, unit:l.ou, storage:l.storage, qty:0, amt:0, cnt:0, sch:new Set(), dates:new Set(), noPrice:!price});
-      const a = m.get(k);a.qty += +l.qty || 0;a.amt += price * (+l.qty || 0);a.cnt++;a.sch.add(SCH[sid]?.name || sid);}));
+      const pr = hcPrice(l, up);
+      if (!m.has(k)) m.set(k, {code:l.code, name:l.name, spec:l.spec, unit:l.ou, storage:l.storage, qty:0, amt:0, cnt:0, sch:new Set(), dates:new Set(), price:pr.v, psrc:pr.src});
+      const a = m.get(k);a.qty += +l.qty || 0;a.amt += pr.v * (+l.qty || 0);a.cnt++;a.sch.add(SCH[sid]?.name || sid);}));
   }
   return [...m.values()];
+}
+// 발주 단가: 발주 줄의 단가 → 센터 계약단가 → umji 최근 출고단가(합계÷수량) 순으로 사용
+function hcUnitPrices(){
+  const u = {};shipAll().forEach(o => {const q = +o.qty, t = +o.tot;if (!o.code || !(q > 0) || !(t > 0)) return;if (!u[o.code] || String(o.date) >= u[o.code].d) u[o.code] = {v:t / q, d:String(o.date || '')};});
+  return u;
+}
+function hcPrice(l, up){
+  if (+l.price > 0) return {v:+l.price, src:l.priceSrc || '발주 단가'};
+  const c = +(STD.center[l.code]?.price);if (c > 0) return {v:c, src:'계약단가'};
+  if (up[l.code]) return {v:up[l.code].v, src:'umji 출고단가'};
+  return {v:0, src:''};
+}
+function hcOrderTotal(){
+  const up = hcUnitPrices();let amt = 0, n = 0, miss = new Set();
+  Object.values(STD.orders).forEach(o => (o.lines || []).forEach(l => {if (!hcOrigin(l.code, l.name)) return;const pr = hcPrice(l, up);n++;if (pr.v) amt += pr.v * (+l.qty || 0);else miss.add(l.code || l.name);}));
+  return {amt, n, miss:miss.size};
 }
 function renderHcTop(force){
   const shipN = Object.keys(SHIP.rows).length;
@@ -1716,23 +1781,25 @@ function renderHcTop(force){
   let allAmt = 0;if (src === 'ship') shipAll().forEach(o => allAmt += +o.tot || 0);
   $('#hcTopSub').textContent = src === 'ship' ? (ds.length ? `umji 출고 · ${ds[0]}${ds.length > 1 ? ' ~ ' + ds[ds.length - 1] : ''} (${ds.length}일)` : 'umji 출고 자료가 아직 없습니다') : '학교별 발주 품목 기준 (시연 자료 포함)';
   const won = n => Math.round(n).toLocaleString() + '원';
+  const ot = hcOrderTotal();
+  const shipAmt = src === 'ship' ? totAmt : (() => {let t = 0;shipAll().forEach(o => {if (hcOrigin(o.code, o.item)) t += +o.tot || 0;});return t;})();
   $('#hcKpi').innerHTML = [
-    ['홍천산 품목', all.length + '개', ''],
+    ['홍천산 품목', all.length + '개', src === 'ship' ? 'umji 출고 기준' : '발주 기준'],
     ['받은 학교', sch.size + '개교', ''],
-    [src === 'ship' ? '홍천산 출고 금액' : '홍천산 발주 금액', totAmt ? won(totAmt) : '-', ''],
-    src === 'ship' ? ['전체 출고 중 비중', allAmt ? (totAmt / allAmt * 100).toFixed(1) + '%' : '-', ''] : ['발주 건수', all.reduce((t, a) => t + a.cnt, 0) + '건', '']
-  ].map(([k, v]) => `<div class="kpi"><span class="l">${k}</span><b class="v">${v}</b></div>`).join('');
+    ['홍천산 발주 금액', ot.amt ? won(ot.amt) : '-', `발주 ${ot.n}건${ot.miss ? ' · 단가 미등록 ' + ot.miss + '품목 제외' : ''}`],
+    ['홍천산 출고 금액', shipAmt ? won(shipAmt) : '-', allAmt && src === 'ship' ? `전체 출고의 ${(totAmt / allAmt * 100).toFixed(1)}%` : 'umji 출고 기준']
+  ].map(([k, v, d]) => `<div class="kpi"><span class="l">${k}</span><b class="v">${v}</b>${d ? `<span class="l" style="color:var(--ink3)">${d}</span>` : ''}</div>`).join('');
   const mx = Math.max(1, ...top.map(f));
-  $('#hcTbl').innerHTML = top.length ? `<thead><tr><th class="n">순위</th><th>품목</th><th>규격</th><th>보관</th><th class="n">수량</th><th>단위</th><th class="n">${src === 'ship' ? '출고 금액' : '발주 금액'}</th><th class="n">학교 수</th><th class="n">건수</th><th style="min-width:140px">비교</th></tr></thead><tbody>` +
-    top.map((a, i) => `<tr title="${esc([...a.sch].join(', '))}"><td class="n mono"><b>${i + 1}</b></td><td style="min-width:220px">${esc(a.name || '')}</td><td class="small">${esc(a.spec || '')}</td><td>${a.storage ? `<span class="st-tag st-${esc(a.storage)}">${esc(a.storage)}</span>` : ''}</td><td class="n mono">${(+a.qty.toFixed(2)).toLocaleString()}</td><td class="small">${esc(a.unit || '')}</td><td class="n mono">${a.amt ? won(a.amt) : '-'}</td><td class="n mono">${a.sch.size}</td><td class="n mono">${a.cnt}</td><td><div style="height:8px;border-radius:4px;background:var(--sunk)"><div style="height:8px;border-radius:4px;background:var(--accent);width:${(f(a) / mx * 100).toFixed(1)}%"></div></div></td></tr>`).join('') + '</tbody>'
+  $('#hcTbl').innerHTML = top.length ? `<thead><tr><th class="n">순위</th><th>품목</th><th>규격</th><th>보관</th><th class="n">수량</th><th>단위</th>${src === 'order' ? '<th class="n">단가</th>' : ''}<th class="n">${src === 'ship' ? '출고 금액' : '발주 금액'}</th><th class="n">학교 수</th><th class="n">건수</th><th style="min-width:140px">비교</th></tr></thead><tbody>` +
+    top.map((a, i) => `<tr title="${esc([...a.sch].join(', '))}"><td class="n mono"><b>${i + 1}</b></td><td style="min-width:220px">${esc(a.name || '')}</td><td class="small">${esc(a.spec || '')}</td><td>${a.storage ? `<span class="st-tag st-${esc(a.storage)}">${esc(a.storage)}</span>` : ''}</td><td class="n mono">${(+a.qty.toFixed(2)).toLocaleString()}</td><td class="small">${esc(a.unit || '')}</td>${src === 'order' ? `<td class="n mono" title="${esc(a.psrc || '단가 미등록')}">${a.price ? won(a.price) : '<span class="muted">미등록</span>'}${a.psrc && a.psrc !== '발주 단가' ? `<div class="small muted" style="font-family:var(--f-body)">${esc(a.psrc)}</div>` : ''}</td>` : ''}<td class="n mono">${a.amt ? won(a.amt) : '-'}</td><td class="n mono">${a.sch.size}</td><td class="n mono">${a.cnt}</td><td><div style="height:8px;border-radius:4px;background:var(--sunk)"><div style="height:8px;border-radius:4px;background:var(--accent);width:${(f(a) / mx * 100).toFixed(1)}%"></div></div></td></tr>`).join('') + '</tbody>'
     : `<tbody><tr><td class="muted small" style="padding:18px">${src === 'ship' ? 'umji 출고 자료에 홍천산 품목이 없습니다. 위에서 "학교 발주 자료"로 바꿔 보세요.' : '발주 자료에 홍천산 품목이 없습니다.'}</td></tr></tbody>`;
   $('#hcNote').textContent = (top.length && top.length < HC_TOP_N ? `현재 자료에는 홍천산 품목이 ${top.length}개뿐입니다. 출고 자료가 날짜별로 쌓이면 19개까지 채워집니다. ` : '') +
-    '홍천산 기준: 표준식재료의 원산지2가 "홍천군"인 품목, 원산지 표기가 없으면 상품명에 홍천이 들어간 품목(○○홍천센터 같은 물류 거점 이름은 제외). 행에 마우스를 올리면 받은 학교가 보입니다.';
+    '발주 금액 = 수량 × 단가 (단가는 발주 단가 → 센터 계약단가 → umji 최근 출고단가 순으로 적용, 없으면 미등록으로 제외). 홍천산 기준: 표준식재료의 원산지2가 "홍천군"인 품목, 원산지 표기가 없으면 상품명에 홍천이 들어간 품목(○○홍천센터 같은 물류 거점 이름은 제외). 행에 마우스를 올리면 받은 학교가 보입니다.';
 }
 let hcTopRows = [], hcSrcTouched = false, hcSortTouched = false;
 function hcTopCsv(){
   const src = $('#hcSrc').value;
-  saveCsv('홍천산_식재료_TOP19.csv', '홍천산 식재료 출고 TOP 19', [['순위', '상품코드', '품목', '규격', '보관', '수량', '단위', src === 'ship' ? '출고금액' : '발주금액', '학교수', '건수', '학교'], ...hcTopRows.map((a, i) => [i + 1, a.code, a.name, a.spec, a.storage, +a.qty.toFixed(2), a.unit, Math.round(a.amt), a.sch.size, a.cnt, [...a.sch].join(' / ')])]);
+  saveCsv('홍천산_식재료_TOP19.csv', '홍천산 식재료 출고 TOP 19', [['순위', '상품코드', '품목', '규격', '보관', '수량', '단위', '단가', '단가출처', src === 'ship' ? '출고금액' : '발주금액', '학교수', '건수', '학교'], ...hcTopRows.map((a, i) => [i + 1, a.code, a.name, a.spec, a.storage, +a.qty.toFixed(2), a.unit, a.price ? Math.round(a.price) : (a.qty ? Math.round(a.amt / a.qty) : ''), a.psrc || (src === 'ship' ? 'umji 출고' : ''), Math.round(a.amt), a.sch.size, a.cnt, [...a.sch].join(' / ')])]);
 }
 function renderHub(){
   renderHcTop();
@@ -2062,7 +2129,7 @@ function renderDriver(){
 }
 function drvMapUpdate(v){
   const M = MAPS.drv;if (!M) return;const r = v.run;
-  M.mk.setLatLng([v.lat, v.lng]);M.mk.getElement() && (M.mk.getElement().firstChild.className = 'veh-ico ' + vState(v));
+  M.mk.setLatLng([v.lat, v.lng]);truckSet(M.mk, vState(v), v._hd);
   const key = r ? [v.id, r.course, r.date, r.meal, r.stops.join(',')].join('|') : 'idle|' + v.id;
   if (M.key !== key){
     M.key = key;M.trail = [];M.stopG.clearLayers();M.stopMk = [];
@@ -2115,7 +2182,7 @@ function startDrvDemo(){
 }
 function etaBlock(r){return `<div class="bar"><i style="width:${clamp(r.t / r.dur * 100, 0, 100)}%"></i></div><span class="small muted">도착 예정 ${hhmm(SIM + Math.max(0, r.dur - r.t))}</span>`;}
 function initDrvMap(){const m = baseMap('mapDrv');if (!m._loaded) m.setView([HUB.lat, HUB.lng], 11);polyStyle(L.geoJSON(DATA.emd).addTo(m), {color:'#8EA2B4', weight:1, fillColor:'#fff', fillOpacity:1}, {color:'#fff', weight:1, opacity:.7, fillOpacity:0});SCHOOLS.forEach(s => L.circleMarker([s.lat, s.lng], {radius:3.5, weight:1, color:'#fff', fillColor:'#8EA2B4', fillOpacity:1}).bindTooltip(s.name).addTo(m));
-  const v = drvVehicle();MAPS.drv = {m, stopG:L.layerGroup().addTo(m), stopMk:[], trail:[], key:null, done:L.polyline([], {color:'#12283F', weight:4, opacity:.85}).addTo(m), path:L.polyline([], {color:'#0B8893', weight:3, dashArray:'6 4'}).addTo(m), mk:L.marker([v.lat, v.lng], {icon:divIcon('내 차', 'veh-ico ok'), zIndexOffset:1000}).addTo(m), follow:null};}
+  const v = drvVehicle();MAPS.drv = {m, stopG:L.layerGroup().addTo(m), stopMk:[], trail:[], key:null, done:L.polyline([], {color:'#12283F', weight:4, opacity:.85}).addTo(m), path:L.polyline([], {color:'#0B8893', weight:3, dashArray:'6 4'}).addTo(m), mk:L.marker([v.lat, v.lng], {icon:truckIcon(v.id, vState(v), v._hd), zIndexOffset:1000}).addTo(m), follow:null};}
 
 /* ---------- 설정 ---------- */
 const CFG_FIELDS = {
@@ -3229,11 +3296,11 @@ function daLiveUpdate(d){
   if (!DA.map || !DA.liveLayer) return;
   const items = DA.adminView && DA.page === 'live' ? allRunPositions() : (myRun(d) ? [{r:myRun(d), d, p:runPos(myRun(d))}] : []);
   const seen = new Set();
-  items.forEach(x => {const k = x.r.driverId;seen.add(k);const me = k === d.id;const lbl = me ? '내 위치' : (x.d?.name || k);const cls = 'drv-ico' + (me ? ' me' : '');
-    if (!DA.liveMk[k]) DA.liveMk[k] = L.marker([x.p.lat, x.p.lng], {icon:divIcon(esc(lbl), cls), zIndexOffset:me ? 1500 : 1200}).addTo(DA.liveLayer);
-    else DA.liveMk[k].setLatLng([x.p.lat, x.p.lng]);
+  items.forEach(x => {const k = x.r.driverId;seen.add(k);const me = k === d.id;const lbl = me ? '내 위치' : (x.d?.name || k);const cls = me ? 'me' : 'drv';const cur = [x.p.lat, x.p.lng];
+    if (!DA.liveMk[k]){DA.liveMk[k] = L.marker(cur, {icon:truckIcon(esc(lbl), cls, 0), zIndexOffset:me ? 1500 : 1200}).addTo(DA.liveLayer);DA.liveMk[k]._p = cur;DA.liveMk[k]._hd = 0;DA.liveMk[k]._trk = L.polyline([cur], {color:me ? '#2563EB' : '#E8590C', weight:4, opacity:.85, interactive:false}).addTo(DA.liveLayer);}
+    else {const mk = DA.liveMk[k];const h = headingOf(mk._p, cur);if (h != null){mk._hd = h;mk._p = cur;const ls = mk._trk.getLatLngs();const l = ls[ls.length - 1];if (!l || Math.abs(l.lat - cur[0]) + Math.abs(l.lng - cur[1]) > 1.5e-4) mk._trk.addLatLng(cur);}mk.setLatLng(cur);truckSet(mk, cls, mk._hd);}
     DA.liveMk[k].bindTooltip(`${esc(x.d?.name || k)} · ${esc(x.p.txt)}`);});
-  Object.keys(DA.liveMk).forEach(k => {if (!seen.has(k)){DA.liveLayer.removeLayer(DA.liveMk[k]);delete DA.liveMk[k];}});
+  Object.keys(DA.liveMk).forEach(k => {if (!seen.has(k)){DA.liveLayer.removeLayer(DA.liveMk[k]);if (DA.liveMk[k]._trk) DA.liveLayer.removeLayer(DA.liveMk[k]._trk);delete DA.liveMk[k];}});
 }
 function daReportPos(ll){
   const d = myDriver();const run = myRun(d);if (!run){DA.picking = false;return;}
