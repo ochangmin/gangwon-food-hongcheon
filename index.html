@@ -766,6 +766,7 @@ main{padding-block:18px 40px;padding-left:max(16px,env(safe-area-inset-left,0px)
 .plain .attr{color:var(--ink3);text-shadow:none}
 .stop-ico.sel{background:var(--accent);color:#fff;transform:translate(-50%,-50%) scale(1.25);box-shadow:0 0 0 4px rgba(11,136,147,.25)}
 .stop-ico{width:20px;height:20px;border-radius:50%;background:#fff;border:2px solid var(--accent);font:700 10px/16px var(--f-mono);text-align:center;color:var(--accent);transform:translate(-50%,-50%);position:absolute}
+.stop-ico.ok{background:var(--ok);border-color:var(--ok);color:#fff}
 .stop-ico.bad{border-color:var(--crit);color:var(--crit)}
 .leaflet-popup-content{font-size:12.5px;line-height:1.5;margin:10px 12px}
 .leaflet-popup-content b{color:var(--navy)}
@@ -1145,12 +1146,14 @@ body.driver-mode{background:#EEF2F5}
       <div class="ph-body" id="drvBody"></div>
       <div class="ph-nav" role="tablist"><button data-p="now" aria-selected="true">진행 중</button><button data-p="list">오늘 코스</button><button data-p="temp">냉장 제어</button></div>
     </div>
-    <div class="stack" style="flex:1;min-width:260px;max-width:520px">
+    <div class="stack" style="flex:1;min-width:260px;max-width:760px">
       <div class="panel"><div class="ph"><h3>운행 방식</h3></div><div class="pb" style="display:flex;flex-direction:column;gap:10px">
         <label class="switch"><input type="checkbox" id="drvManual">기사 직접 조작 (도착 후 기사 버튼으로 하차·인수 처리)</label>
         <p class="small muted" style="margin:0">끄면 차량이 시뮬레이션에 따라 자동으로 하차·인수 완료합니다. 켜면 도착한 뒤 기사가 버튼을 눌러야 다음 학교로 넘어가고, 그 사이 시간도 구간 소요시간에 포함됩니다.</p>
       </div></div>
-      <div class="panel"><div class="ph"><h3>내 차량 위치</h3></div><div class="mapwrap" style="height:320px"><div class="map" id="mapDrv"></div></div></div>
+      <div class="panel"><div class="ph"><h3>실시간 운행 지도</h3><span class="sub" id="drvMapSub"></span><div class="r"><label class="switch small"><input type="checkbox" id="drvFollow" checked>차량 따라가기</label><button class="btn sm pri" id="drvDemo">시연 운행 시작</button></div></div><div class="mapwrap" style="height:420px"><div class="map" id="mapDrv"></div></div>
+        <div class="legend" style="position:static;display:flex;gap:14px;flex-wrap:wrap;padding:8px 14px;box-shadow:none;border:0;background:transparent"><span><i style="background:var(--navy)"></i>지나온 길</span><span><i style="background:var(--accent)"></i>남은 경로</span><span><i style="background:var(--ok)"></i>인수 완료 학교</span></div></div>
+      <div class="panel"><div class="ph"><h3>학교 이동 순서</h3><span class="sub" id="drvStopSub"></span></div><div class="pb slist" id="drvStops" style="max-height:440px;overflow:auto;padding-top:0"></div></div>
     </div>
   </div>
 </section>
@@ -1171,18 +1174,15 @@ body.driver-mode{background:#EEF2F5}
 
 <!-- 기사 계정 -->
 <section class="view" id="v-acct" hidden>
-  <div class="vhead"><div><h2>기사 계정 관리</h2><p>배송 기사는 자기 Claude 계정으로 기사 앱에 로그인합니다. 센터는 기사 프로필에 계정을 연결하고 코스를 배정하며, 오늘 운행 진행을 실시간으로 봅니다.</p></div>
+  <div class="vhead"><div><h2>기사 계정 관리</h2><p>배송 기사는 센터가 발급한 아이디·비밀번호로 기사 앱에 로그인합니다. 센터는 기사별 계정과 코스를 관리하고, 오늘 운행 진행을 실시간으로 봅니다.</p></div>
     <div class="act"><span id="acctNote"></span><span id="pwBulkWrap"><button class="btn" id="pwBulk">시연용 비밀번호 일괄 설정</button></span><button class="btn" id="acctAdd">기사 추가</button><button class="btn pri" id="acctOpen">기사 앱 열기</button></div></div>
-  <div class="panel"><div class="ph"><h3>기사 프로필</h3><span class="sub">이름·코스는 바로 저장 · 계정은 이름 검색으로 연결</span></div><div class="tw"><table class="t" id="acctTbl"></table></div></div>
-  <div class="grid2 even">
-    <div class="panel"><div class="ph"><h3>연결 요청</h3><span class="sub">기사가 앱에서 보낸 요청</span></div><div class="pb" id="claimList"></div></div>
-    <div class="panel"><div class="ph"><h3>기사 앱 쓰는 법</h3></div><div class="pb small" style="display:flex;flex-direction:column;gap:6px">
-      <div><b>1.</b> 이 페이지를 공유 메뉴에서 기사에게 <b>기여자(Contributor)</b> 권한으로 공유합니다. 보기 권한으로는 운행 기록이 저장되지 않습니다.</div>
-      <div><b>2.</b> 기사는 휴대폰 Claude 앱에서 링크를 열고 "기사 앱"을 누릅니다. 주소 끝에 <span class="mono">#driver</span>를 붙이면 바로 기사 화면이 열립니다.</div>
-      <div><b>3.</b> 기사가 본인 프로필을 골라 연결을 요청하면 왼쪽에 뜨고, 승인하면 로그인됩니다. 표에서 이름으로 계정을 찾아 바로 연결해도 됩니다.</div>
+  <div class="panel"><div class="ph"><h3>기사 프로필</h3><span class="sub">이름·아이디·코스는 바로 저장 · 비밀번호는 기사별로 설정</span></div><div class="tw"><table class="t" id="acctTbl"></table></div></div>
+  <div class="panel"><div class="ph"><h3>기사 앱 쓰는 법</h3></div><div class="pb small" style="display:flex;flex-direction:column;gap:6px">
+      <div><b>1.</b> 표에서 기사별 로그인 아이디와 비밀번호를 정합니다.</div>
+      <div><b>2.</b> 기사는 휴대폰에서 링크를 열고 "기사 앱"을 누릅니다. 주소 끝에 <span class="mono">#driver</span>를 붙이면 바로 기사 화면이 열립니다.</div>
+      <div><b>3.</b> 받은 아이디·비밀번호로 로그인하면 본인 코스와 학교 순서가 나옵니다. 5번 틀리면 5분간 잠깁니다.</div>
       <div><b>4.</b> 운행 시작·도착·인수 완료·검수 체크·메모가 공유 DB에 저장되어 이 표의 "오늘 운행"에 바로 나타납니다.</div>
     </div></div>
-  </div>
 </section>
 
 <!-- 설정 -->
@@ -1540,15 +1540,29 @@ const SAT = {
 let MAPSTYLE = store.get('mapstyle', 'sat');
 const POLYS = []; // {layer, plain, sat}
 function polyStyle(layer, plain, sat){POLYS.push({layer, plain, sat});layer.setStyle(MAPSTYLE === 'sat' ? sat : plain);return layer;}
+// 독립 사이트(급식.shop)에서는 확대 시 고해상도 항공영상 타일을 겹쳐 씀. Claude 아티팩트는 외부 타일을 불러올 수 없어 기존 Sentinel-2 영상만 사용.
+const HIRES = !window.claude;
+let VWKEY = '';try{VWKEY = (new URLSearchParams(location.search).get('vworld') || localStorage.getItem('vworldKey') || '').trim();if (VWKEY) localStorage.setItem('vworldKey', VWKEY);}catch(e){}
+function hiresLayers(){
+  const o = {pane:'sat', maxZoom:19, minZoom:12, keepBuffer:3, crossOrigin:true};
+  if (VWKEY) return [
+    L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${VWKEY}/Satellite/{z}/{y}/{x}.jpeg`, {...o, maxNativeZoom:19}),
+    L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${VWKEY}/Hybrid/{z}/{y}/{x}.png`, {...o, maxNativeZoom:19})];
+  return [
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {...o, maxNativeZoom:19}),
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {...o, maxNativeZoom:19}),
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', {...o, maxNativeZoom:19, opacity:.55})];
+}
 function baseMap(id, opts = {}){
   const only = opts.sat;delete opts.sat;
-  const m = L.map(id, {zoomControl:true, attributionControl:false, zoomSnap:.25, preferCanvas:false, minZoom:7, maxZoom:16, ...opts});
+  const m = L.map(id, {zoomControl:true, attributionControl:false, zoomSnap:.25, preferCanvas:false, minZoom:7, maxZoom:HIRES ? 19 : 16, ...opts});
   const pane = m.createPane('sat');pane.style.zIndex = 150;
   m._sat = (only || ['gw', 'hc']).map(k => L.imageOverlay(SAT[k].url, SAT[k].b, {pane:'sat', interactive:false}));
+  if (HIRES) m._sat.push(...hiresLayers());
   const box = m.getContainer();
   const ctl = document.createElement('div');ctl.className = 'mapstyle';ctl.innerHTML = '<button type="button" data-ms="sat">실사</button><button type="button" data-ms="plain">일반</button>';
   L.DomEvent.disableClickPropagation(ctl);box.appendChild(ctl);
-  const at = document.createElement('div');at.className = 'attr';at.textContent = '위성영상: Sentinel-2 cloudless 2024 © EOX IT Services GmbH (Copernicus Sentinel data 2024 수정) · 경계: 행정동 · OSM';box.appendChild(at);
+  const at = document.createElement('div');at.className = 'attr';at.textContent = HIRES ? (VWKEY ? '항공영상 © 국토교통부 브이월드 · 경계: 행정동' : '항공영상 © Esri, Maxar, Earthstar Geographics · 지명 © Esri · 경계: 행정동') : '위성영상: Sentinel-2 cloudless 2024 © EOX IT Services GmbH (Copernicus Sentinel data 2024 수정) · 경계: 행정동 · OSM';box.appendChild(at);
   applyMapStyle(m);
   return m;
 }
@@ -1968,13 +1982,64 @@ function renderDriver(){
       <div class="card"><span class="ey" style="color:var(--ink3)">최근 명령</span><div class="cmdlog">${v.cmd.slice(-6).map(c => `<span class="${c.ack ? 'ack' : 'tx'}">${hhmm(c.t)} ${esc(c.msg)}</span>`).join('') || '<span class="tx">없음</span>'}</div></div>`;
   }
   $('#drvBody').innerHTML = h;
-  if (MAPS.drv){const M = MAPS.drv;M.mk.setLatLng([v.lat, v.lng]);M.mk.getElement() && (M.mk.getElement().firstChild.className = 'veh-ico ' + vState(v));
-    const pts = r ? [[v.lat, v.lng], ...r.stops.slice(r.i).map(id => {const s = SCH[DEL.find(d => d.id === id).sid];return [s.lat, s.lng];})] : [];M.path.setLatLngs(pts);
-    if (M.follow !== v.id){M.follow = v.id;M.m.setView([v.lat, v.lng], 11);}}
+  drvMapUpdate(v);renderDrvStops(v);
+}
+function drvMapUpdate(v){
+  const M = MAPS.drv;if (!M) return;const r = v.run;
+  M.mk.setLatLng([v.lat, v.lng]);M.mk.getElement() && (M.mk.getElement().firstChild.className = 'veh-ico ' + vState(v));
+  const key = r ? [v.id, r.course, r.date, r.meal, r.stops.join(',')].join('|') : 'idle|' + v.id;
+  if (M.key !== key){
+    M.key = key;M.trail = [];M.stopG.clearLayers();M.stopMk = [];
+    if (r){
+      if (r.relay) L.marker([r.relay.lat, r.relay.lng], {icon:divIcon(r.relay.name, 'hub-ico')}).addTo(M.stopG);
+      r.stops.forEach((id, i) => {const d = DEL.find(x => x.id === id);const s = SCH[d.sid];M.stopMk[i] = L.marker([s.lat, s.lng], {icon:divIcon(i + 1, 'stop-ico'), zIndexOffset:900}).bindTooltip(`${i + 1}. ${s.name}`).addTo(M.stopG);});
+      M.m.fitBounds(L.latLngBounds([[v.lat, v.lng], ...r.stops.map(id => {const s = SCH[DEL.find(d => d.id === id).sid];return [s.lat, s.lng];})]).pad(.15), {maxZoom:13});
+    } else if (M.follow !== v.id){M.m.setView([v.lat, v.lng], 11);}
+    M.follow = v.id;
+  }
+  if (r){
+    const last = M.trail[M.trail.length - 1];if (!last || Math.abs(last[0] - v.lat) + Math.abs(last[1] - v.lng) > 1e-5) M.trail.push([v.lat, v.lng]);
+    M.done.setLatLngs(M.trail);
+    const rest = r.phase === 'return' ? [[v.lat, v.lng], [HUB.lat, HUB.lng]] : [[v.lat, v.lng], ...r.stops.slice(r.i).map(id => {const s = SCH[DEL.find(d => d.id === id).sid];return [s.lat, s.lng];})];
+    M.path.setLatLngs(rest);
+    r.stops.forEach((id, i) => {const el = M.stopMk[i]?.getElement()?.firstChild;if (!el) return;const d = DEL.find(x => x.id === id);el.className = 'stop-ico' + (d?.status === '인수완료' ? ' ok' : i === r.i && r.phase !== 'return' ? ' sel' : '');});
+    if ($('#drvFollow')?.checked) M.m.panTo([v.lat, v.lng], {animate:true, duration:.8});
+    const ph = {trunk:'중계거점으로 이동', drive:'학교로 이동 중', arrived:'학교 도착', unload:'하차 중', unload_m:'하차 중', return:'센터 복귀'}[r.phase] || '';
+    $('#drvMapSub').textContent = `${v.id} · 코스 ${r.course} · ${ph} · ${v.lat.toFixed(4)}, ${v.lng.toFixed(4)}`;
+  } else {M.path.setLatLngs([]);M.done.setLatLngs([]);$('#drvMapSub').textContent = `${v.id} · 대기 중 · 시연 운행 시작을 누르면 코스를 따라 움직입니다`;}
+}
+function renderDrvStops(v){
+  const box = $('#drvStops');if (!box) return;const r = v.run;
+  const c = COURSES.find(x => x.veh === v.id);
+  let items;
+  if (r) items = r.stops.map(id => DEL.find(d => d.id === id));
+  else {const mine = DEL.filter(d => d.veh === v.id && d.date === TODAY);items = mine.length ? mine.slice().sort((a, b) => (a.done ?? 1e9) - (b.done ?? 1e9)) : (c ? PLAN[c.id].order.map(sid => ({sid, status:'예정'})) : []);}
+  let eta = SIM + (r ? Math.max(0, (r.dur || 0) - (r.t || 0)) : 0);let prev = null;
+  const rows = items.map((d, i) => {const s = SCH[d.sid];let cls = '', txt = '';
+    if (d.status === '인수완료'){cls = 'done';txt = `완료 ${d.done != null ? hhmm(d.done) : ''}${d.leg != null ? ' · 구간 ' + Math.round(d.leg) + '분' : ''}`;prev = s;}
+    else if (r && i === r.i && r.phase !== 'return'){cls = 'cur';txt = {drive:`이동 중 · 도착 예정 ${hhmm(eta)}`, trunk:'중계거점 경유 중', arrived:'도착 · 하차 대기', unload:'하차 중', unload_m:'하차 중'}[r.phase] || d.status;prev = s;eta += CFG.unload;}
+    else if (r && i > r.i){if (prev) eta += Math.max(1, legMin(prev, s) - CFG.unload);prev = s;txt = `도착 예정 ~${hhmm(eta)}`;eta += CFG.unload;}
+    else txt = d.status || '예정';
+    return `<div class="si ${cls}" ${cls === 'cur' ? 'id="drvCur"' : ''}><span class="no">${i + 1}</span><span style="min-width:0"><b>${esc(s.name)}</b><br><span class="small muted">${esc(s.emd)}${d.meal ? ' · ' + esc(d.meal) : ''}</span></span><span class="small" style="text-align:right">${txt}</span></div>`;});
+  const done = items.filter(d => d.status === '인수완료').length;
+  $('#drvStopSub').textContent = items.length ? `${items.length}개교 중 ${done}곳 완료` : '';
+  const html = rows.join('') || '<div class="empty">배정된 학교가 없습니다. 시연 운행 시작을 눌러 보세요.</div>';
+  if (box.dataset.h !== html){box.innerHTML = html;box.dataset.h = html;const cur = $('#drvCur');if (cur){const top = cur.offsetTop - box.offsetTop - 60;if (Math.abs(box.scrollTop - top) > 40) box.scrollTo({top, behavior:'smooth'});}}
+}
+function startDrvDemo(){
+  const v = drvVehicle();if (v.run){toast('이미 운행 중입니다. 지도와 순서를 확인하세요.');return;}
+  const c = COURSES.find(x => x.veh === v.id);if (!c){toast('이 차량에 배정된 코스가 없습니다.');return;}
+  const meal = '시연';DEL = DEL.filter(d => !(d.date === TODAY && d.meal === meal && COURSE_OF[d.sid] === c.id));
+  createDeliveries(TODAY, meal, PLAN[c.id].order);
+  DEL.filter(d => d.date === TODAY && d.meal === meal && COURSE_OF[d.sid] === c.id).forEach(d => {d.veh = v.id;d.status = '배차';});
+  v.manual = false;v.lat = HUB.lat;v.lng = HUB.lng;
+  if (MAPS.drv) MAPS.drv.key = null;
+  startCourse(c, TODAY, meal);saveDel();
+  toast(`${v.id} 코스 ${c.id} 시연 운행을 시작했습니다 · ${PLAN[c.id].order.length}개교`);renderDriver();
 }
 function etaBlock(r){return `<div class="bar"><i style="width:${clamp(r.t / r.dur * 100, 0, 100)}%"></i></div><span class="small muted">도착 예정 ${hhmm(SIM + Math.max(0, r.dur - r.t))}</span>`;}
-function initDrvMap(){const m = baseMap('mapDrv');polyStyle(L.geoJSON(DATA.emd).addTo(m), {color:'#8EA2B4', weight:1, fillColor:'#fff', fillOpacity:1}, {color:'#fff', weight:1, opacity:.7, fillOpacity:0});SCHOOLS.forEach(s => L.circleMarker([s.lat, s.lng], {radius:3.5, weight:1, color:'#fff', fillColor:'#8EA2B4', fillOpacity:1}).bindTooltip(s.name).addTo(m));
-  const v = drvVehicle();MAPS.drv = {m, mk:L.marker([v.lat, v.lng], {icon:divIcon('내 차', 'veh-ico ok'), zIndexOffset:1000}).addTo(m), path:L.polyline([], {color:'#0B8893', weight:3, dashArray:'6 4'}).addTo(m), follow:null};}
+function initDrvMap(){const m = baseMap('mapDrv');if (!m._loaded) m.setView([HUB.lat, HUB.lng], 11);polyStyle(L.geoJSON(DATA.emd).addTo(m), {color:'#8EA2B4', weight:1, fillColor:'#fff', fillOpacity:1}, {color:'#fff', weight:1, opacity:.7, fillOpacity:0});SCHOOLS.forEach(s => L.circleMarker([s.lat, s.lng], {radius:3.5, weight:1, color:'#fff', fillColor:'#8EA2B4', fillOpacity:1}).bindTooltip(s.name).addTo(m));
+  const v = drvVehicle();MAPS.drv = {m, stopG:L.layerGroup().addTo(m), stopMk:[], trail:[], key:null, done:L.polyline([], {color:'#12283F', weight:4, opacity:.85}).addTo(m), path:L.polyline([], {color:'#0B8893', weight:3, dashArray:'6 4'}).addTo(m), mk:L.marker([v.lat, v.lng], {icon:divIcon('내 차', 'veh-ico ok'), zIndexOffset:1000}).addTo(m), follow:null};}
 
 /* ---------- 설정 ---------- */
 const CFG_FIELDS = {
@@ -2510,6 +2575,7 @@ function bind(){
   // 기사 앱
   $('#drvVeh').innerHTML = VEH.filter(v => v.region === '홍천군').map(v => `<option value="${v.id}">${v.id} · ${v.driver}</option>`).join('');
   $('#drvVeh').onchange = () => {renderDriver();};
+  $('#drvDemo').onclick = startDrvDemo;
   $('.ph-nav').addEventListener('click', e => {const b = e.target.closest('[data-p]');if (b){drvPage = b.dataset.p;renderDriver();}});
   $('#drvManual').onchange = e => {const v = drvVehicle();v.manual = e.target.checked;if (!v.manual && v.run){if (v.run.phase === 'arrived'){v.run.phase = 'unload';v.run.t = 0;v.run.unl = CFG.unload;v.run.doorFor = 3;openDoor(v, DEL.find(d => d.id === v.run.stops[v.run.i]));}if (v.run.phase === 'unload_m'){v.run.phase = 'unload';v.run.unl = 0;}}toast(v.manual ? `${v.id}: 기사 직접 조작` : `${v.id}: 자동 운행`);renderDriver();};
   $('#drvBody').addEventListener('click', async e => {
@@ -2562,7 +2628,7 @@ function driverList(){
 function myDriver(){
   if (DA.demo) return driverList().find(d => d.id === DA.demo) || null;
   const sd = typeof sessDriver === 'function' ? sessDriver() : null;if (sd) return sd;
-  if (!UID || DA.loginMode !== 'account') return null;return driverList().find(d => d.uid && d.uid === UID) || null;
+  return null; // Claude 계정 로그인은 사용하지 않음 (아이디·비밀번호만)
 }
 function myRun(d){return d ? DA.runs[runKey(d.id)] || null : null;}
 let runQueue = Promise.resolve();
@@ -2602,20 +2668,8 @@ function daRender(soft){
 function daLogin(){
   const signedIn = !!UID;const list = driverList();const mine = UID ? DA.claims[UID] : null;
   let h = `<div class="da-hero"><h2>기사 로그인</h2><p>센터에서 받은 아이디와 비밀번호로 로그인하세요.</p></div>` + loginForm();
-  const linked = UID ? driverList().find(x => x.uid && x.uid === UID) : null;
-  if (!DB) return h + `<div class="da-card warn"><b>공유 DB에 연결되지 않았습니다.</b><p class="small">Claude 앱이나 claude.ai에서 이 페이지를 열면 로그인과 운행 기록 저장이 됩니다. 지금은 저장 없이 시연만 할 수 있습니다.</p></div>` + daDemoPick(list);
-  if (!signedIn) return h + daDemoPick(list, true);
-  if (linked) h += `<div class="da-card"><b>Claude 계정 로그인</b><p class="small muted" style="margin:0">이 Claude 계정은 ${esc(linked.name || linked.id)} 기사 프로필에 연결되어 있습니다.</p><button class="btn" data-da="acctlogin">Claude 계정으로 로그인</button></div>`;
-  h += `<details class="da-card"><summary><b>Claude 계정 연결</b> <span class="small muted">아이디 대신 계정으로 로그인하려면</span></summary>`;
-  h += `<div class="da-card"><div class="row"><img id="daAv" class="da-av" alt=""><div><b id="daName">내 계정</b><div class="small muted">Claude 계정 확인됨</div></div></div></div>`;
-  if (mine){
-    const dd = list.find(x => x.id === mine.driverId);
-    h += `<div class="da-card"><span class="pill warn">센터 승인 대기</span><p><b>${esc(dd?.name || mine.driverId)}</b> (${esc(mine.driverId)}) 프로필 연결을 요청했습니다. 센터 담당자가 승인하면 바로 들어갑니다.</p><button class="btn" data-da="unclaim">요청 취소</button></div>`;
-  } else {
-    h += `<div class="da-card"><b>내 기사 프로필 선택</b><p class="small muted">본인 이름을 골라 연결을 요청하세요. 센터 승인 후 로그인됩니다.</p><div class="da-list">${list.map(x => `<button type="button" class="da-pick" data-da="claim" data-id="${x.id}" ${x.uid ? 'disabled' : ''}><span><b>${esc(x.name || x.id)}</b><br><span class="small muted">${esc(x.id)} · ${esc(x.veh || '')} · 코스 ${esc(x.course || '-')}</span></span><span class="small">${x.uid ? '다른 계정 연결됨' : '연결 요청'}</span></button>`).join('')}</div></div>`;
-  }
-  if (DA.adminView) h += `<div class="da-card"><b>센터 관리자</b><p class="small muted">관리자 계정은 승인 없이 바로 연결할 수 있습니다.</p><div class="da-list">${list.filter(x => !x.uid).map(x => `<button type="button" class="da-pick" data-da="selflink" data-id="${x.id}"><span><b>${esc(x.name || x.id)}</b> <span class="small muted">${esc(x.id)}</span></span><span class="small">내 계정 연결</span></button>`).join('')}</div></div>`;
-  h += `</details>` + daDemoPick(list, true);
+  if (!DB) return h + `<div class="da-card warn"><b>시연 모드</b><p class="small">이 화면은 저장 없이 둘러보는 시연용입니다. 아래에서 기사를 골라 화면을 확인할 수 있습니다.</p></div>` + daDemoPick(list);
+  h += daDemoPick(list, true);
   setTimeout(daFillMe, 0);
   return h;
 }
@@ -2761,11 +2815,8 @@ function daTimerTick(){
 async function renderAcct(){
   if (view !== 'acct' || !$('#acctTbl')) return;
   const list = driverList();const admin = DA.adminView;
-  const ids = [...new Set([...list.map(x => x.uid).filter(Boolean), ...Object.keys(DA.claims)])];
-  const ps = USER && ids.length ? await USER.profiles(ids) : {};
-  const nm = id => (ps[id]?.name) || '계정 ' + (Object.keys(ps).indexOf(id) + 1);
-  $('#acctNote').innerHTML = !DB ? '<span class="pill warn">공유 DB 없음 · 보기 전용</span>' : admin ? '<span class="pill ok">관리자 · 연결·배정 가능</span>' : '<span class="pill">보기 전용 · 관리자(편집자)만 수정</span>';
-  $('#acctTbl').innerHTML = `<thead><tr><th>기사 ID</th><th>이름</th><th>로그인 아이디</th><th>비밀번호</th><th>차량</th><th>코스</th><th>연결 계정</th><th>오늘 운행</th><th>관리</th></tr></thead><tbody>` + list.map(x => {
+  $('#acctNote').innerHTML = !DB ? '<span class="pill warn">공유 DB 없음 · 보기 전용</span>' : admin ? '<span class="pill ok">관리자 · 계정·배정 관리 가능</span>' : '<span class="pill">보기 전용 · 관리자(편집자)만 수정</span>';
+  $('#acctTbl').innerHTML = `<thead><tr><th>기사 ID</th><th>이름</th><th>로그인 아이디</th><th>비밀번호</th><th>차량</th><th>코스</th><th>오늘 운행</th></tr></thead><tbody>` + list.map(x => {
     const run = DA.runs[runKey(x.id)];const ci = run ? curIdx(run) : -2;const dn = run ? run.stops.filter(s => s.status === '완료').length : 0;
     const demoTag = run?.demo ? ' <span class="pill warn">시연</span>' : '';
     const prog = !run ? '<span class="muted small">시작 전</span>' : ci < 0 ? `<span class="pill ok">종료 ${dn}/${run.stops.length}</span>` : `<span class="pill info">${dn}/${run.stops.length} · ${esc(SCH[run.stops[ci].sid].name)} ${run.stops[ci].status}</span>`;
@@ -2775,10 +2826,7 @@ async function renderAcct(){
       <td>${DA.auth[x.id] ? `<span class="pill ok">설정됨</span>` : '<span class="pill warn">미설정</span>'}${admin && DB ? ` <span data-pwwrap="${x.id}"><button class="btn sm" data-pwopen="${x.id}">${DA.auth[x.id] ? '재설정' : '설정'}</button></span>` : ''}</td>
       <td>${esc(x.veh || '')}</td>
       <td>${admin && DB ? `<select class="in" data-dcourse="${x.id}" aria-label="코스"><option value="">미배정</option>${COURSES.map(c => `<option value="${c.id}" ${x.course === c.id ? 'selected' : ''}>${c.id} · ${c.name}</option>`).join('')}</select>` : esc(x.course || '-')}</td>
-      <td>${x.uid ? `<span class="pill ok">${esc(nm(x.uid))}</span>` : '<span class="muted small">미연결</span>'}</td><td>${prog}${demoTag}</td>
-      <td class="row" style="flex-wrap:nowrap">${admin && DB ? (x.uid ? `<button class="btn sm danger" data-unlink="${x.id}">연결 해제</button>` : `<span class="acct-pick"><input class="in" data-psearch="${x.id}" placeholder="이름으로 계정 찾기" style="width:140px" aria-label="계정 검색"><span class="sugg" data-pres="${x.id}" hidden></span></span>`) : ''}</td></tr>`;}).join('') + '</tbody>';
-  const claims = Object.entries(DA.claims);
-  $('#claimList').innerHTML = !admin ? '<div class="small muted">연결 요청은 관리자에게만 보입니다.</div>' : claims.length ? claims.map(([uid, c]) => {const dd = list.find(x => x.id === c.driverId);return `<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line2)"><span><b>${esc(nm(uid))}</b> → ${esc(dd?.name || c.driverId)} (${esc(c.driverId)})</span><span class="small muted">${new Date(c.at).toLocaleString('ko-KR')}</span><span class="row" style="margin-left:auto"><button class="btn sm pri" data-approve="${uid}|${c.driverId}">승인</button><button class="btn sm" data-reject="${uid}">거절</button></span></div>`;}).join('') : '<div class="small muted">대기 중인 요청이 없습니다.</div>';
+      <td>${prog}${demoTag}</td></tr>`;}).join('') + '</tbody>';
 }
 async function acctEvents(e){
   const t = e.target;
