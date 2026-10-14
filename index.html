@@ -691,6 +691,10 @@ h1,h2,h3{text-wrap:balance;margin:0}
 header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:1000;background:#FFFFFF;border-bottom:1px solid var(--line)}
 .top-in{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding-block:12px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .brand{display:flex;align-items:baseline;gap:10px;min-width:0}
+.org-logo{height:30px;width:auto;align-self:center;object-fit:contain}
+.org-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 20px 18px;border-top:1px solid var(--line);background:var(--panel);color:var(--ink2);font-size:13px;font-weight:600}
+.driver-mode .org-foot{display:none}
+.org-foot .of-l{display:flex;align-items:center;gap:10px}.org-foot .org-logo{height:28px}
 .brand h1{font-size:19px;font-weight:700;letter-spacing:-.01em;color:var(--navy)}
 .brand span{color:var(--ink3);font-size:12.5px}
 .top-right{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -759,6 +763,7 @@ main{padding-block:18px 40px;padding-left:max(16px,env(safe-area-inset-left,0px)
 .trk .lb{position:absolute;left:50%;top:calc(50% + 17px);transform:translateX(-50%);background:var(--navy);color:#fff;font:700 10px/1 var(--f-mono);padding:2px 4px;border-radius:4px;white-space:nowrap;border:1px solid #fff}
 .trk.sm .bd{width:13px;height:21px}
 .trk.warn{--c:var(--warn)} .trk.crit{--c:var(--crit)} .trk.door{--c:#7a4cc2} .trk.idle{--c:#6d7f90}
+.trk.pick{--c:#D6336C;z-index:5} .trk.pick .bd{transform-origin:center} .trk.pick .lb{background:#D6336C;font-size:11px} .trk.dim{opacity:.55}
 .trk.me{--c:#2563EB} .trk.me .lb{background:#2563EB} .trk.drv{--c:#E8590C} .trk.drv .lb{background:#E8590C}
 .trk.crit .bd{animation:trkp 1s infinite}@keyframes trkp{50%{filter:drop-shadow(0 0 5px var(--crit))}}
 .veh-ico.warn{background:var(--warn)} .veh-ico.crit{background:var(--crit)} .veh-ico.door{background:#7a4cc2} .veh-ico.idle{background:#6d7f90}
@@ -981,7 +986,7 @@ body.driver-mode{background:#EEF2F5}
 
 <header class="top">
   <div class="top-in">
-    <div class="brand"><h1>강원 먹거리 이음</h1><span>홍천 중심 · 강원 18개 시·군 먹거리 IoT 광역 관제</span></div>
+    <div class="brand"><img class="org-logo" data-org-logo alt="" hidden><h1>강원 먹거리 이음</h1><span>홍천 중심 · 강원 18개 시·군 먹거리 IoT 광역 관제</span></div>
     <div class="top-right">
       <span class="demo-tag">시연 데이터</span>
       <button class="btn sm" type="button" id="goDriver">기사 앱</button>
@@ -1234,6 +1239,7 @@ POST /api/deliveries/{배송ID}/events
   </div>
 </section>
 </main>
+<footer class="org-foot" id="orgFoot"><div class="of-l"><img class="org-logo" data-org-logo alt="" hidden><span id="orgName">강원 먹거리 이음 · 홍천 학교급식 스마트 물류 시연</span></div><div class="of-r"><img class="org-logo" data-org-logo alt="" hidden></div></footer>
 <div class="toast" id="toast" role="status"></div>
 <div id="modalRoot"></div>
 <div id="drawerRoot"></div>
@@ -1304,18 +1310,76 @@ const DEF_CFG = {tMin:0, tMax:5, hotPeak:5, hMax:85, doorMax:5, legLimit:30, unl
 let CFG = Object.assign({}, DEF_CFG, store.get('cfg', {}));
 const relayState = store.get('relay', Object.fromEntries(COURSES.map(c => [c.id, !!c.relay])));
 
+/* ---------- 기관 표시 (data/org.json · img/org-logo.png — 기관이 승인한 파일을 저장소에 직접 올려 사용) ---------- */
+(async () => {
+  let o = {};try{const r = await fetch('data/org.json', {cache:'no-store'});if (r.ok) o = await r.json();}catch(e){}
+  if (o.name){const n = document.getElementById('orgName');if (n) n.textContent = o.name;}
+  const src = o.logo || 'img/org-logo.png';
+  document.querySelectorAll('[data-org-logo]').forEach(img => {img.onload = () => {img.hidden = false;};img.onerror = () => img.remove();img.alt = o.name || '';img.src = src;});
+})();
+
 /* ---------- 거리·시간 ---------- */
 function hav(a, b){const r = 6371, d2r = Math.PI / 180;const dLat = (b.lat - a.lat) * d2r, dLng = (b.lng - a.lng) * d2r;const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * d2r) * Math.cos(b.lat * d2r) * Math.sin(dLng / 2) ** 2;return 2 * r * Math.asin(Math.sqrt(x));}
-function roadKm(a, b){return hav(a, b) * CFG.roadFactor;}
-function driveMin(a, b){const km = roadKm(a, b);if (km < 0.05) return 1;const sp = km < 4 ? CFG.speedTown : CFG.speedRural;return km / sp * 60;}
+/* ---------- 실제 도로 경로 (OSRM·OpenStreetMap 기반 사전 계산 + 사이트에서는 없는 구간을 실시간 조회) ---------- */
+// 2026-10 OSRM(OpenStreetMap) 도로 경로 · 92구간 · [인코딩 좌표, 도로 km, 정밀도]
+const ROAD_ENC = {"HUB>S29":["ki_VkbamABVq@VgCmF?IW[X?",2.1,10000.0],"S29>S38":["_o_VoiamAY?j@fAp@U",0.8,10000.0],"S38>S40":["{l_V}gamAq@TQe@HGb@A|Bt@b@V\\jA",2.1,10000.0],"S40>S23":["qg_V}camAJPaAv@q@XXf@nAfAEX",1.8,10000.0],"S23>S37":["ug_Vo|`mACTNFB\\e@O",0.5,10000.0],"S37>S41":["kh_Vc{`mAHD",0.1,10000.0],"S41>S42":["ah_V}z`mAZHD|AHXh@b@AMN@",1.1,10000.0],"S42>S39":["}d_Vcv`mAE?LPVE@TGP",0.5,10000.0],"S39>S03":["cd_Vot`mAFQBTJCbBz@T[DX",1.2,10000.0],"S03>S26":["k__Vur`mADTWHJd@p@~An@nENTdBdAbCzBLf@JfCJXl@r@\\t@Ld@MD",5.4,10000.0],"HUB>S10":["ki_VkbamABVdA}@g@oA|AwBRGjBE~AuBjAyDLoA@aAo@G",5.1,10000.0],"S10>S24":["_}~UqxamAJB",0.1,10000.0],"S24>S18":["s|~UmxamAb@BIvBuAvEyAnB{BJ_ApAaAiAwGsCoEoDoAuAoAsBgAmAAOUGJc@t@aAp@eC?Wb@g@Xy@l@[EIQASL",11.8,10000.0],"S18>S08":["{z_ViibmARMP@DHm@ZYx@c@f@?Vq@dCw@fAI\\TFCJ_Ae@qBo@uAOAMH@Rv@Nk@Bo@Ni@Ak@UScAIm@QWKIQY_K_@gAAu@Wy@A]Fa@`ByDA[Sm@K}ASo@CoD@q@h@yCGe@J]@UDEXCBFZIV`@H`@P@JJ`AKvBxAb@m@lAk@\\m@bAElAg@pBEv@Dr@mAt@NVc@FBPp@ALQL?LPN@R`@r@KPc@TAR",21.0,10000.0],"S08>S44":["sn_V_rcmA@Sb@UJQa@s@ASQO?MPM@MQq@GCWb@u@Os@lAw@EqBDmAf@cAD]l@mAj@c@l@wByAaAJKKQAIa@Wa@_AHMt@Fd@m@lDDlERn@J|ARl@@ZaBxDG`@@\\Vx@@t@^fATvI",14.3,10000.0],"S44>S45":["uk`VwgbmABb@HTGJ_Bb@_BLOq@uB_DEEOT",2.8,10000.0],"S45>S02":["kv`VajbmANUrBzCLX@`@RRENHF`A`@nBlA~@Ff@LZXbAJbAxAl@^",4.8,10000.0],"S02>S43":["sa`VmyamAKKh@_BNRRC`AdAlArBz@`AfElDv@f@dFrBb@\\f@t@vB|EDXcAfB@jCH\\@l@s@bAEf@INk@Xe@f@O`@Cb@yA~CEn@`@d@PnAcAj@S^EXg@B",13.2,10000.0],"HUB>R:서석":["ki_VkbamABVdA}@g@oA|AwBRGjBEtAgBvAqEJeABoA\\wAGkB`@kGIaCR]P}@CkADs@Xq@f@kBE}@Dk@OgBBe@IgAFk@Zs@Jk@SuBSq@?[u@}@oBu@a@Em@Lk@Ks@eBc@q@Wu@Gm@Wo@Rs@Iu@Te@VuAj@m@Ck@Je@QUBeAh@s@d@cBMy@EcAFcBK_A]}@yAyAc@o@c@YEg@Oe@MMOAA_@{@}@aAyBCs@Fg@^s@^wAASa@uAJ{AIeBUQg@aAOMaBDgCQ]DQc@uAkAUs@KkAAeDVeAnC{DlCaCVeAGC",33.1,10000.0],"R:서석>S19":["mo_VktfmAa@SNYH?",0.4,10000.0],"S19>S20":["uo_VyufmAE@",0.1,10000.0],"S20>S21":["{o_VwufmAU\\YMGN",0.4,10000.0],"S21>S17":["sq_VwtfmAFOdA^FW`@iEVoA]mC^q@R}C|@kA`@Y",4.3,10000.0],"S17>S22":["mi_V}kgmAa@X}@jAS|C_@p@\\lCWnAUnCz@NjCgAXF`@v@hA`@j@BTa@",5.9,10000.0],"S22>S32":["ab_VmvfmA[`@e@CiAa@a@w@YGkCfA{@Oe@hCQV_Ax@G?qCnDoCbAOPo@~B?\\X~AM~@Yl@_@A[OyBgCy@[U@[f@U@u@KgAs@eCUUGMQUJa@Y]Z@l@WZFb@QROEKSq@Si@g@c@GSOQ@YXMf@_@tCUOBE",15.3,10000.0],"S32>S31":["s}`V_}emAGE@I",0.1,10000.0],"S31>S06":["y}`Vo}emA@TTNMVMFi@|BCh@Ll@Ar@ULMTa@JKe@[Wy@r@i@FI`@YJaBDg@WQkAS]OEa@Ba@R@`BK~@Tt@RxDLl@u@Pc@h@DpAMx@FbB]fAK~@]RO]QK",10.2,10000.0],"S06>S07":["osaVoxdmAVR^z@EHH`@",0.7,10000.0],"S07>S11":["sqaVstdmAXb@BTq@`@u@bBETBj@h@jCTl@fAhA`@J`@h@f@`BAn@Qp@Nv@R\\d@d@Zp@EhAFb@Ex@Q^c@`@S\\y@lE?`@PfAVh@dAlAHV?jCm@fAs@o@yDwA}AcBgGwFqB[mA_@[A_@J_Av@iAp@s@Fq@[wAoCQVe@SSNo@u@q@G@SZE",19.1,10000.0],"S11>S12":["}tbVuncmA[DARl@DTP\\d@FVCBVz@WAGOLE",1.6,10000.0],"HUB>R:내면":["ki_VkbamABVdA}@g@oA|AwBRGjBEtAgBvAqEJeABoA\\wAGkB`@kGIaCR]P}@CkADs@Xq@f@kBE}@Dk@OgBBe@GmAFm@Xk@Jc@S}BSq@?[u@}@oBu@a@Em@Lk@Ks@eBc@q@Wu@Gm@Wo@Rs@Iu@Te@VuAj@m@Ck@Je@QUBeAh@s@d@cBMy@EcAFcBK_A]}@yAyAc@o@c@YEg@Oe@MMOAA_@{@}@aAyBCs@Fg@^s@^wAASa@uAJ{AIeBUQg@aAOMaBDgCQ]DQc@wAmASq@KkAAeDXkAlCuDlCaCDM`@mBXkDTcAAm@YkB^q@PuC~@sAb@]^{@X_@X_A@y@Ke@e@]}@Yc@e@Mu@DU^{@GmA_@}@}@e@e@gAEyBg@uB_A[q@}@]q@e@]sCaDaCe@s@a@Ug@_@UwAuBPDe@g@a@KZCYKCQWH]G\\{B^YXgAZm@PiAR_@@Sc@mBi@a@BOX?HMJcAIcAFy@~@k@FDF\\NAGk@Xy@Bo@VeA@_@Pg@Oe@sAs@KUgAgA{Bi@c@YOo@Fu@Ca@Y}@]e@_@U[Rq@HkAOSKDO",59.1,10000.0],"R:내면>S04":["ir`VwpjmACD",0.0,10000.0],"S04>S05":["mr`VqpjmAAHWODMEA",0.3,10000.0],"S05>S30":["gs`VgqjmAD@EL]UMWFEFH",0.6,10000.0],"S30>S27":["ct`VarjmAGIGD_@g@oAIc@OWm@UQkAF_Co@m@q@u@sAm@_@m@Me@VM?w@W{@k@y@Io@cC@u@SSU@}AtA_@@BFOL",7.5,10000.0],"S27>S28":["euaVwakmANMCG^A|AuARCTTAx@Xz@Jt@LPt@Dz@j@v@VL?d@Wl@Ll@^t@rAh@n@bCp@z@KTDNNRp@VThCx@rAx@pANj@MTQ`@Vf@x@P|@GdAHb@NPtCx@fAfAJTt@Z`@\\Jd@Q`@A^WdACn@Yx@Fj@O@G]GE_Aj@Gx@HbAKbAILY?CNh@`@b@lBARS^QhA[l@YfA_@X_@|B",18.7,10000.0],"HUB>S13":["ki_VkbamABVdA}@tAzCTa@jArEV\\r@b@z@`DHEJ`@V`@rAUVBb@Zn@SXqApA{@r@gAxDuBtACdAQdBFxAq@zAE|Ca@~@UtCLzC_AnGE~@Tz@f@\\CMrAu@tBXj@BrB[bAEdAYf@k@hEYl@WdDJr@G\\GC",20.9,10000.0],"S13>S36":["ke}Uk~_mAFBEp@ZnACzBa@z@Eb@iAtD",2.6,10000.0],"S36>S01":["ch}Usm_mAIl@@dAOv@BZ}AnC]~@@f@[fAOxAFzAKfCO`@u@`@n@n@^z@KPq@ONm@",5.8,10000.0],"S01>S25":["eo}Uio~lACRUC",0.2,10000.0],"S25>S14":["_p}Uyn~lANDEVk@KSSSRqCDANWD",1.8,10000.0],"S14>S35":["uw}Ukm~lAVE@OtACDt@J^dBbCr@f@^h@j@`@`Bl@LT@TGf@Yz@_@vC_@xAu@b@MIKBUf@[ZO^}@p@Q?SOiA]e@AiA^",8.1,10000.0],"HUB>S16":["ki_VkbamABVq@ZXd@nAfAR`En@n@s@bAEf@INk@Xe@f@O`@Cb@Ul@aAlBGr@`@d@PnAgAn@OZE\\MTy@Zq@bAYLm@r@u@\\i@b@SBYSw@WYWM?uCxA{@bAq@`@g@~@q@T_@^wBr@ORBrELhC`@xC^n@WhAc@h@QFOj@U`@aAnJE~@HzArBtMf@jB?l@f@ZRG?[Ws@BOF?l@bBVZTj@t@`Eh@Gt@r@d@?fBb@xCjBzB`@z@f@x@r@bB@ZO`Al@@|@LR~@BjC_@KV?PU@",31.4,10000.0],"S16>S34":["_e_V_||lATA?QJWj@VLr@Ex@iBhC[j@?LUH`Az@j@vAbAd@|@Nz@tDYxBKZWRwAl@]d@Mp@BvAHT\\^Fl@Vb@\\^`@HnAp@t@|@l@xBBdAE|@YLc@Ho@MwA?UHs@fAaAd@KOHGIK",12.8,10000.0],"S34>S33":["{d_Vqf{lAHJIFJN~@_@Nv@FfAULFN",1.4,10000.0],"S33>S15":["eb_Voa{lAGOTMScCHSr@}@`BAr@Lx@W@PJLg@lB",3.2,10000.0],"S15>S09":["wz~Uae{lAf@mBKMAQZFb@`@hA?|@iB\\[H@Tb@^En@m@j@@PGZc@Hc@r@Iz@?rAsABSr@?BSa@UIg@BQX]NmA]a@Ic@i@e@GYWYI]Cc@`@gBV?f@O^VDC@UVOPNRAd@l@n@?ZKn@B",10.6,10000.0],"S01>HUB":["eo}Uio~lAOl@m@MiEuCc@KmBMc@SY[mAsDkAqBaAwDkAqBaCaDeDiGq@cBu@cAIe@EkBMi@gC}B}A_ASWY{AQqBf@mA?k@iAwD{@m@_@s@q@cDEw@s@sBWNEKeBxACW",17.9,10000.0],"S02>HUB":["sa`VmyamAKKh@_BNRRC`AdAlArBz@`AfElDv@f@dFrBb@\\Z`@L`@[Zj@rAeA|@CW",7.4,10000.0],"S03>HUB":["k__Vur`mADTWHI]_Ac@?y@e@cCg@g@Ma@SQ_A[oAkAM_@l@YCW",3.8,10000.0],"S04>HUB":["mr`VqpjmAAHXLdALp@IZS^T\\d@X|@B`@Gt@Nn@b@XzBh@fAfAJTrAr@Nd@Qf@A^WdACn@Yx@Fj@O@G]GE_Aj@Gx@HbAKbAILY?CNh@`@b@lBARS^QhA[l@YfA_@X]zB\\FVIBPXJ[B`@Jd@f@QEvAtB^TTf@r@`@`Cd@rC`Dd@\\\\p@p@|@~@Zf@tBDxBd@fA|@d@^|@FlA_@z@ETLt@b@d@|@Xd@\\Jd@Ax@Y~@Y^_@z@c@\\_ArAQtC_@p@XjB@l@UbAYjDa@lBQV_Ax@G?y@|@mCtDYjA@dDJjARp@vAlAPb@\\EfCP`BENLf@`ATPHdBKzA`@tA@R_@vA_@r@Gf@Br@`AxBz@|@@^N@LLNd@Df@b@Xb@n@xAxA\\|@J~@GbBDbALx@e@bBi@r@CdAPTKd@Bj@k@l@WtAUd@Ht@Sr@Vn@Fl@Vt@b@p@r@dBj@JbAKzBx@h@p@^xAR|BKb@Yj@Gl@FlACd@NfBEj@D|@g@jBYp@Er@BjAQ|@S\\H`Ca@jGFjB]vACnAKdAwApEuAfBkBDSFe@v@{@x@j@tAeA|@CW",59.1,10000.0],"S05>HUB":["gs`VgqjmAD@ELv@^jALj@MTQ^T\\d@X|@B`@Gt@Nn@b@XzBh@fAfAJTrAr@Nd@Qf@A^WdACn@Yx@Fj@O@G]GE_Aj@Gx@HbAKbAILY?CNh@`@b@lBARS^QhA[l@YfA_@X]zB\\FVIBPXJ[B`@Jd@f@QEvAtB^TTf@r@`@`Cd@rC`Dd@\\\\p@p@|@~@Zf@tBDxBd@fA|@d@^|@FlA_@z@ETLt@b@d@|@Xd@\\Jd@Ax@Y~@Y^_@z@c@\\_ArAQtC_@p@XjB@l@UbAYjDa@lBQV_Ax@G?y@|@mCtDYjA@dDJjARp@vAlAPb@\\EfCP`BENLf@`ATPHdBKzA`@tA@R_@vA_@r@Gf@Br@`AxBz@|@@^N@LLNd@Df@b@Xb@n@xAxA\\|@J~@GbBDbALx@e@bBi@r@CdAPTKd@Bj@k@l@WtAUd@Ht@Sr@Vn@Fl@Vt@b@p@r@dBj@JbAKzBx@h@p@^xAR|BKb@Yj@Gl@FlACd@NfBEj@D|@g@jBYp@Er@BjAQ|@S\\H`Ca@jGFjB]vACnAKdAwApEuAfBkBDSFe@v@{@x@j@tAeA|@CW",59.4,10000.0],"S06>HUB":["osaVoxdmA\\\\|@nCELm@Zy@lB?l@TlAVnAXl@`A`A`@J`@h@f@`BAn@Qp@Nv@R\\d@d@Zp@EhAFb@Ex@Q^c@`@S\\y@lE?`@PfAVh@dAlAHV?jCo@hArApAdCTjDfBz@pAv@d@t@rA|@x@t@fBTPnA`@`AjBRRzCzAdDApDfAtAbAjBvCnAvArDvCv@f@|FdCf@l@L`@[Zj@rAeA|@CW",26.5,10000.0],"S07>HUB":["sqaVstdmAXb@BTq@`@u@bBETBj@h@jCTl@fAhA`@J`@h@f@`BAn@Qp@Nv@R\\d@d@Zp@EhAFb@Ex@Q^c@`@S\\y@lE?`@PfAVh@dAlAHV?jCo@hArApAdCTjDfBz@pAv@d@t@rA|@x@t@fBTPnA`@`AjBRRzCzAdDApDfAtAbAjBvCnAvArDvCv@f@|FdCf@l@L`@[Zj@rAeA|@CW",25.9,10000.0],"S08>HUB":["sn_V_rcmAf@NHNXGRPAVLEFU\\BNGEXTNh@z@~A[tAi@VPdAJlAKtBt@x@fA@TRp@RtBKj@[r@Gj@HfACd@NfBEj@D|@g@jBYp@Er@BjAQ|@S\\H`Ca@jGFjB]vACnAKdAwApEuAfBkBDSFe@v@{@x@j@tAeA|@CW",17.5,10000.0],"S09>HUB":["w|}Uac|lArAmAPe@@w@]iBB_@x@aAh@QnEeGOm@\\iBjD}HNqA_@{Bv@}ACcADi@o@iDb@mD^oA?i@U[}@U_Ak@[g@_Aq@eBcCK_@Eu@_ADw@Go@qAiA}@Om@[G_@c@gAkDkAqBaAwDkAqBaCaDeDiGq@cBu@cAIe@EkBMi@gC}B}A_ASWY{AQqBf@mA?k@iAwD{@m@_@s@q@cDEw@s@sBWNEKeBxACW",30.5,10000.0],"S10>HUB":["_}~UqxamAn@FA`AMnAkAxD_BtBkBDSFe@v@{@x@j@tAeA|@CW",5.1,10000.0],"S11>HUB":["}tbVuncmA[DARp@Fn@t@ROd@RJOf@l@p@tAn@`@d@@XKz@g@jAaAXId@BbA\\nBXtJfJxDtAxBxBdCTjDfBz@pAv@d@t@rA|@x@t@fBTPnA`@`AjBRRzCzAdDApDfAtAbAjBvCnAvArDvCv@f@|FdCf@l@L`@[Zj@rAeA|@CW",24.9,10000.0],"S12>HUB":["orbV}icmAMDFNd@BTaAESJO\\\\`AnBXP^FZA\\O|BcBXId@Bt@XjCf@fJ|IxDtAxBxBdCTjDfBz@pAv@d@t@rA|@x@t@fBTPnA`@`AjBRRx@ZxAz@d@DbBGt@FbCr@lAp@`AdAlArBz@`AfElDv@f@dFrBb@\\Z`@L`@[Zj@rAeA|@CW",24.5,10000.0],"S13>HUB":["ke}Uk~_mAFBF]Ks@VeDXm@j@iEXg@DeAZcACsBYk@t@uBLuA]@aAi@y@QcG@eDbAwCMyEt@yADaBr@_BIcAPyAD}DvB}@lAmGnDUEBWW?A]oAcEy@i@We@y@qDEw@s@sBWNEKeBxACW",21.1,10000.0],"S14>HUB":["uw}Ukm~lAVE@Oa@Eo@qAiA}@Om@[G_@c@gAkDkAqBaAwDkAqBaCaDeDiGq@cBu@cAIe@EkBMi@gC}BoBqAWoAU_C@Md@cA?k@iAwD{@m@_@s@q@cDEw@s@sBWNEKeBxACW",16.8,10000.0],"S15>HUB":["wz~Uae{lAf@mBKMCSFm@AkA]_B[q@k@m@oAq@a@I]_@Wc@Gm@]_@IUCwARy@`@c@tAm@Zi@VcCo@aCCk@cAM{@e@{@aBgCyBg@iAMk@?uBNaAO_@q@a@[NcBAy@s@{@g@{Ba@yCkBgBc@e@?u@s@i@Fu@aEu@wAe@{AKHALX`ACJIBc@w@g@{AcAkG{@yGBwBz@uHb@oBv@y@ViA_@o@a@yCMiCCsENSvBs@^_@p@Uf@_Ap@a@z@cAtCyAL?XVv@VXRRCh@c@t@]l@s@\\Mz@mAv@YFk@R_@bA_@QyAa@g@Fs@`AmBTm@Bc@Na@d@g@j@YHODg@r@cAo@o@M_EuAiAUc@l@]CW",40.2,10000.0],"S16>HUB":["_e_V_||lATA?QJWkC^_ACMSA}@aAm@[NcBAy@s@{@g@{Ba@yCkBgBc@e@?u@s@i@Fu@aEu@wAe@{AKHALX`ACJIBc@w@g@{AuBeNKyAD}Az@uHb@oBv@y@ViA_@o@a@yCMiCCsENSvBs@^_@p@Uf@_Ap@a@z@cAtCyAL?XVv@VXRRCh@c@t@]l@s@\\Mz@mAv@YFk@R_@bA_@QyAa@g@Fs@`AmBTm@Bc@Na@d@g@j@YHODg@r@cAo@o@M_EuAiAUc@l@]CW",31.3,10000.0],"S17>HUB":["mi_V}kgmAa@X_ArAQtC_@p@XjB@l@UbAYjDa@lBQV_Ax@G?y@|@mCtDYjABrDH|@Rp@vAlAPb@\\EfCP`BENLf@`ATPHdBKzA`@tA@R_@vA_@r@Gf@Br@`AxBz@|@@^N@LLNd@Df@b@Xb@n@xAxA\\|@J~@GbBDbALx@e@bBi@r@CdAPTKd@Bj@k@l@WtAUd@Ht@Sr@Vn@Fl@Vt@b@p@r@dBj@JbAKzBx@h@p@^xAR|BKb@Yj@Gl@FlACd@NfBEj@D|@g@jBYp@Er@BjAQ|@S\\H`Ca@jGFjB]vACnAKdAwApEuAfBkBDSFe@v@{@x@j@tAeA|@CW",36.9,10000.0],"S18>HUB":["{z_ViibmARMP@DHm@ZYx@c@f@?Vq@dCu@`AQr@NRRCb@`@jBvCnAvArDvCv@f@dFrBb@\\Z`@L`@[Zj@rAeA|@CW",9.3,10000.0],"S19>HUB":["uo_VyufmAI?IJgAtDy@v@oCzDWdA@dDJjATr@tAjAPb@\\EfCP`BENLf@`ATPHdBKzA`@tA@R_@vA_@r@Gf@Br@`AxBz@|@@^N@LLNd@Df@b@Xb@n@xAxA\\|@J~@GbBDbALx@e@bBi@r@CdAPTKd@Bj@k@l@WtAUd@Ht@Sr@Vn@Fl@Vt@b@p@r@dBj@JbAKzBx@h@p@^xARtBKj@[r@Gj@HfACd@NfBEj@D|@g@jBYp@Er@BjAQ|@S\\H`Ca@jGFjB]vACnAKdAwApEuAfBkBDSFe@v@{@x@j@tAeA|@CW",33.2,10000.0],"S20>HUB":["{o_VwufmAMHgAtDy@v@oCzDWdA@dDJjATr@tAjAPb@\\EfCP`BENLf@`ATPHdBKzA`@tA@R_@vA_@r@Gf@Br@`AxBz@|@@^N@LLNd@Df@b@Xb@n@xAxA\\|@J~@GbBDbALx@e@bBi@r@CdAPTKd@Bj@k@l@WtAUd@Ht@Sr@Vn@Fl@Vt@b@p@r@dBj@JbAKzBx@h@p@^xARtBKj@[r@Gj@HfACd@NfBEj@D|@g@jBYp@Er@BjAQ|@S\\H`Ca@jGFjB]vACnAKdAwApEuAfBkBDSFe@v@{@x@j@tAeA|@CW",33.2,10000.0],"S21>HUB":["sq_VwtfmAQj@RV_@zAy@v@gCnD[dAApDJjATr@tAjAPb@\\EfCP`BENLf@`ATPHdBKzA`@tA@R_@vA_@r@Gf@Br@`AxBz@|@@^N@LLNd@Df@b@Xb@n@xAxA\\|@J~@GbBDbALx@e@bBi@r@CdAPTKd@Bj@k@l@WtAUd@Ht@Sr@Vn@Fl@Vt@b@p@r@dBj@JbAKzBx@h@p@^xARtBKj@[r@Gj@HfACd@NfBEj@D|@g@jBYp@Er@BjAQ|@S\\H`Ca@jGFjB]vACnAKdAwApEuAfBkBDSFe@v@{@x@j@tAeA|@CW",33.0,10000.0],"S22>HUB":["ab_VmvfmA[`@e@CiAa@a@w@YGkCfA{@Ok@rC}@|@UHy@|@gCnD_@pA@dDLnARn@tAjAPb@\\EfCP`BENLf@`ATPHdBKzA`@tA@R_@vA_@r@Gf@Br@`AxBz@|@@^N@LLNd@Df@b@Xb@n@xAxA\\|@J~@GbBDbALx@e@bBi@r@CdAPTKd@Bj@k@l@WtAUd@Ht@Sr@Vn@Fl@Vt@b@p@r@dBj@JbAKzBx@h@p@^xARtBKj@[r@Gj@HfACd@NfBEj@D|@g@jBYp@Er@BjAQ|@S\\H`Ca@jGFjB]vACnAKdAwApEuAfBkBDSFe@v@{@x@j@tAeA|@CW",36.0,10000.0],"S23>HUB":["ug_Vo|`mA@SFEsAgAUc@l@]CW",1.4,10000.0],"S24>HUB":["s|~UmxamAb@BIvBqArE_BtBkBDSFe@v@{@x@j@tAeA|@CW",5.0,10000.0],"S25>HUB":["_p}Uyn~lANDEV}@UyDmCc@KmBMc@SY[mAsDkAqBaAwDkAqBaCaDeDiGq@cBu@cAIe@EkBMi@gC}B}A_ASWY{AQqBf@mA?k@iAwD{@m@_@s@q@cDEw@s@sBWNEKeBxACW",17.9,10000.0],"S26>HUB":["cq~Ugu_mARCQi@]s@m@u@M[IcCMi@gC}BcBeAOWWuAQqBf@mA?k@iAwD{@m@_@s@q@cDEw@s@sBWNEKeBxACW",9.4,10000.0],"S27>HUB":["euaVwakmANMCGo@\\Q@gAeAs@Xq@~Bk@dAKf@APDJJ?ZYf@X@NGr@BJ`@_ARCRZBl@SnAc@n@Jj@AVMLa@NTdBIf@MR_@J@DXJRb@GDa@S]C?H\\XDp@GTk@Zq@Ee@\\?\\HVbAt@PXFVG`@KDc@CQM]g@SC@~BI|@MZ[Tm@H@^KLw@PmAq@s@ACHLlBKp@yBzBs@`BsAp@eAbBARHVpA\\NT?PI^[XiADGd@NTn@HZNJT@Ve@lBSZ_@PuAESHAh@ZfA]tBJd@X^Fj@MZYVe@NG^Dn@GjAFJp@a@`@w@PCXH`@]HDQ|CWv@Nx@OD_@v@MF{@w@qCmBm@q@w@Hg@Ig@]oCoDcDyBU{ASc@SS[IkAJs@Gy@JTb@~@HZZnALdAjBlH`HrHbIxF~BbIbBnBr@vGlE`CnBp@\\|Bn@j@^`AbAr@rAlEtOLbBBzHVvAdBfDZpALrANrKLnAPn@~A`EdMzSl@|Ab@rBLxB?dAWnEg@hEQnMQ|As@~CCp@@`@z@~DJ|A?|@Ex@I`@y@TWb@?j@TpAG\\[\\dAZ~A~@d@DbBGt@FbCr@lAp@`AdAlArBz@`AfElDv@f@dFrBb@\\Z`@L`@[Zj@rAeA|@CW",83.4,10000.0],"S28>HUB":["ih`Va_imA^DVIBPXJ[B`@Jd@f@QEvAtB^TTf@r@`@`Cd@rC`Dd@\\\\p@p@|@~@Zf@tBDxBd@fA|@d@^|@FlA_@z@ETLt@b@d@|@Xd@\\Jd@Ax@Y~@Y^_@z@c@\\_ArAQtC_@p@XjB@l@UbAYjDa@lBQV_Ax@G?y@|@mCtDYjA@dDJjARp@vAlAPb@\\EfCP`BENLf@`ATPHdBKzA`@tA@R_@vA_@r@Gf@Br@`AxBz@|@@^N@LLNd@Df@b@Xb@n@xAxA\\|@J~@GbBDbALx@e@bBi@r@CdAPTKd@Bj@k@l@WtAUd@Ht@Sr@Vn@Fl@Vt@b@p@r@dBj@JbAKzBx@h@p@^xAR|BKb@Yj@Gl@FlACd@NfBEj@D|@g@jBYp@Er@BjAQ|@S\\H`Ca@jGFjB]vACnAKdAwApEuAfBkBDSFe@v@{@x@j@tAeA|@CW",48.2,10000.0],"S29>HUB":["_o_VoiamAY?jBpDr@dBp@[CW",2.1,10000.0],"S30>HUB":["ct`VarjmAGIGDPZjAn@pANj@MTQ^T\\d@X|@B`@Gx@Hb@NPtCx@fAfAJTt@Zb@^Hb@Q`@A^WdACn@Yx@Fj@O@G]GE_Aj@Gx@HbAKbAILY?CNh@`@b@lBARS^QhA[l@YfA_@X]zB\\FVIBPXJ[B`@Jd@f@QEvAtB^TTf@r@`@`Cd@rC`Dd@\\\\p@p@|@~@Zf@tBDxBd@fA|@d@^|@FlA_@z@ETLt@b@d@|@Xd@\\Jd@Ax@Y~@Y^_@z@c@\\_ArAQtC_@p@XjB@l@UbAYjDa@lBQV_Ax@G?y@|@mCtDYjA@dDJjARp@vAlAPb@\\EfCP`BENLf@`ATPHdBKzA`@tA@R_@vA_@r@Gf@Br@`AxBz@|@@^N@LLNd@Df@b@Xb@n@xAxA\\|@J~@GbBDbALx@e@bBi@r@CdAPTKd@Bj@k@l@WtAUd@Ht@Sr@Vn@Fl@Vt@b@p@r@dBj@JbAKzBx@h@p@^xAR|BKb@Yj@Gl@FlACd@NfBEj@D|@g@jBYp@Er@BjAQ|@S\\H`Ca@jGFjB]vACnAKdAwApEuAfBkBDSFe@v@{@x@j@tAeA|@CW",59.7,10000.0],"S31>HUB":["y}`Vo}emA@TTNMVMFi@|BCh@Ll@Ar@ULOV]JGI@ZNPhAHOeCa@m@q@[ESDGJ@F`@L|JPnBb@vAlAxCxM~Tt@lCRxBBlAEnA}@xJKpKGdAeAvF@x@r@`DNjABlAExAMd@q@LY`@Cf@VzAG\\[\\dAZ~A~@d@DbBGt@FbCr@lAp@`AdAlArBz@`AfElDv@f@dFrBb@\\Z`@L`@[Zj@rAeA|@CW",32.5,10000.0],"S32>HUB":["s}`V_}emACDTN_@f@i@nC?XLb@Ar@ULOV]JGI@ZNPhAHOeCa@m@q@[ESDGJ@F`@L|JPnBb@vAlAxCxM~Tt@lCRxBBlAEnA}@xJKpKGdAeAvF@x@r@`DNjABlAExAMd@q@LY`@Cf@VzAG\\[\\dAZ~A~@d@DbBGt@FbCr@lAp@`AdAlArBz@`AfElDv@f@dFrBb@\\Z`@L`@[Zj@rAeA|@CW",32.4,10000.0],"S33>HUB":["eb_Voa{lAGOTMUeCu@ZQPa@tBi@hBEj@Fr@Kf@D~@G^SP_AX{@r@y@HMGI_@QQiB}@Oy@y@m@a@u@OAe@\\OCYi@eAqAO]]qAEs@iAeCUw@HkAd@cA?QO[_Ac@Q[]yA@s@FET`AJNNFp@CHF@LKDKQiA_E[cBQqF@gGg@_GK}DiAoGo@qCOwASwDScAaAeDmBgMKyAD}Az@uHb@oBv@y@ViA_@o@a@yCMiCCsENSvBs@^_@p@Uf@_Ap@a@z@cAtCyAL?XVv@VXRRCh@c@t@]l@s@\\Mz@mAv@YFk@R_@bA_@QyAa@g@Fs@`AmBTm@Bc@Na@d@g@j@YHODg@r@cAo@o@M_EuAiAUc@l@]CW",43.9,10000.0],"S34>HUB":["{d_Vqf{lAHJIFJNuAzFDjAKf@Fh@El@QTaAXeAx@y@DYm@qBeAQ{@y@m@a@u@OAe@\\K?]m@eAqAO]]qAEs@iAeCUw@HkAd@cA?QO[_Ac@Q[]yA@s@FET`AJNNFp@CHF@LKDKQiA_E[cBQqF@gGg@_GK}DiAoGo@qCOwASwDScAaAeDmBgMKyAD}Az@uHb@oBv@y@ViA_@o@a@yCMiCCsENSvBs@^_@p@Uf@_Ap@a@z@cAtCyAL?XVv@VXRRCh@c@t@]l@s@\\Mz@mAv@YFk@R_@bA_@QyAa@g@Fs@`AmBTm@Bc@Na@d@g@j@YHODg@r@cAo@o@M_EuAiAUc@l@]CW",42.9,10000.0],"S35>HUB":["my}Ucq}lAhA_@d@@hA\\RNP?|@q@N_@Z[Tg@JCLHt@c@f@uBV{B\\gA@q@U[}@U_Ak@[g@_Aq@eBcCK_@Eu@_ADw@Go@qAiA}@Om@[G_@c@gAkDkAqBaAwDkAqBaCaDeDiGq@cBu@cAIe@EkBMi@gC}B}A_ASWY{AQqBf@mA?k@iAwD{@m@_@s@q@cDEw@s@sBWNEKeBxACW",24.5,10000.0],"S36>HUB":["ch}Usm_mAIl@@dAOv@BZ}AnC]~@@f@[fAOxAFzAKfCO`@u@`@n@n@^z@INaB[mEwCeCUk@U_@c@gAkDcAaBiAgEkAqBaCaDeDiGq@cBu@cAIe@EkBMi@gC}B}A_ASWY{AQqBf@mA?k@iAwD{@m@_@s@q@cDEw@s@sBWNEKeBxACW",23.3,10000.0],"S37>HUB":["kh_Vc{`mAd@NCsAuAiAUc@l@]CW",1.8,10000.0],"S38>HUB":["{l_V}gamAq@T~@hBr@dBp@[CW",1.8,10000.0],"S39>HUB":["cd_Vot`mAFQOqDWk@SQ_A[oAkAM_@l@YCW",2.8,10000.0],"S40>HUB":["qg_V}camAJPaAv@CW",0.7,10000.0],"S41>HUB":["ah_V}z`mAZHCsAuAiAUc@l@]CW",1.8,10000.0],"S42>HUB":["}d_Vcv`mAOA?_@I]?mC_A[gAcAUc@l@]CW",2.5,10000.0],"S43>HUB":["gp_Vc``mAXCAFLHFk@R_@bA_@QyAa@g@Fs@`AmBTm@Bc@Na@d@g@j@YHODg@r@cAo@o@M_EuAiAUc@l@]CW",6.8,10000.0],"S44>HUB":["uk`VwgbmABf@JPbA\\bAHTR@j@Oh@IfAKJFYV?jCt@j@XdAx@jBvCnAvArDvCv@f@dFrBb@\\Z`@L`@[Zj@rAeA|@CW",10.1,10000.0],"S45>HUB":["kv`VajbmANUpAlBh@x@Fn@RTELPLzCzAdDApDfAtAbAjBvCnAvArDvCv@f@|FdCf@l@L`@[Zj@rAeA|@CW",11.5,10000.0]};
+const ROAD = {};
+function polyDec(str, fac = 1e5){const out = [];let i = 0, lat = 0, lng = 0;while (i < str.length){let b, sh = 0, r = 0;do {b = str.charCodeAt(i++) - 63;r |= (b & 31) << sh;sh += 5;} while (b >= 32);lat += r & 1 ? ~(r >> 1) : r >> 1;sh = 0;r = 0;do {b = str.charCodeAt(i++) - 63;r |= (b & 31) << sh;sh += 5;} while (b >= 32);lng += r & 1 ? ~(r >> 1) : r >> 1;out.push([lat / fac, lng / fac]);}return out;}
+function nodeKey(p){
+  if (!p) return null;if (p.id && SCH[p.id] === p) return p.id;
+  let best = null, bd = 3e-4;const chk = (q, k) => {if (!q) return;const d = Math.max(Math.abs(q.lat - p.lat), Math.abs(q.lng - p.lng));if (d < bd){bd = d;best = k;}};
+  chk(HUB, 'HUB');for (const k in RELAYS) chk(RELAYS[k], 'R:' + k);for (const s of SCHOOLS) chk(s, s.id);return best;
+}
+function roadGet(a, b){
+  const ka = nodeKey(a), kb = nodeKey(b);if (!ka || !kb || ka === kb) return null;
+  let r = ROAD[ka + '>' + kb];if (r) return r;
+  const e = ROAD_ENC[ka + '>' + kb];
+  if (e){const pts = polyDec(e[0], e[2] || 1e5);r = ROAD[ka + '>' + kb] = mkRoad([[a.lat, a.lng], ...pts, [b.lat, b.lng]], e[1]);return r;}
+  const rv = ROAD_ENC[kb + '>' + ka] || ROAD[kb + '>' + ka];
+  if (rv){const pts = (rv.pts ? rv.pts.slice(1, -1) : polyDec(rv[0], rv[2] || 1e5)).slice().reverse();r = ROAD[ka + '>' + kb] = mkRoad([[a.lat, a.lng], ...pts, [b.lat, b.lng]], rv.km ?? rv[1]);return r;}
+  roadFetch(ka, kb, a, b);return null;
+}
+function mkRoad(pts, km){const cum = [0];for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + hav({lat:pts[i - 1][0], lng:pts[i - 1][1]}, {lat:pts[i][0], lng:pts[i][1]}));return {pts, cum, len:cum[cum.length - 1], km:km || cum[cum.length - 1]};}
+// 독립 사이트에서만: 미리 계산되지 않은 구간은 OSRM 공개 서버로 조회해 이 브라우저에 저장
+const ROAD_Q = new Set();let roadBusy = false;
+function roadFetch(ka, kb, a, b){
+  if (window.claude || ROAD_Q.has(ka + '>' + kb)) return;ROAD_Q.add(ka + '>' + kb);
+  try{const c = JSON.parse(localStorage.getItem('road:' + ka + '>' + kb) || 'null');if (c){ROAD_ENC[ka + '>' + kb] = c;return;}}catch(e){}
+  (async () => {
+    while (roadBusy) await new Promise(r => setTimeout(r, 400));roadBusy = true;
+    try{const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}?overview=simplified&geometries=polyline`);const j = await r.json();
+      if (j.code === 'Ok'){const v = [j.routes[0].geometry, +(j.routes[0].distance / 1000).toFixed(2)];ROAD_ENC[ka + '>' + kb] = v;try{localStorage.setItem('road:' + ka + '>' + kb, JSON.stringify(v));}catch(e){}}}
+    catch(e){}finally{roadBusy = false;}
+  })();
+}
+// 경로 위 비율 f(0~1) 지점
+function roadAt(R, f){
+  const t = clamp(f, 0, 1) * R.len;let i = 1;while (i < R.cum.length - 1 && R.cum[i] < t) i++;
+  const a = R.pts[i - 1], b = R.pts[i];const seg = R.cum[i] - R.cum[i - 1];const g = seg > 0 ? (t - R.cum[i - 1]) / seg : 0;
+  return {p:[a[0] + (b[0] - a[0]) * g, a[1] + (b[1] - a[1]) * g], i};
+}
+function legPos(a, b, f){const R = roadGet(a, b);if (!R) return [a.lat + (b.lat - a.lat) * f, a.lng + (b.lng - a.lng) * f];return roadAt(R, f).p;}
+// a→b 구간의 도로 좌표 (from 비율 f부터)
+function legLine(a, b, f){
+  const R = roadGet(a, b);if (!R) return f ? [legPos(a, b, f), [b.lat, b.lng]] : [[a.lat, a.lng], [b.lat, b.lng]];
+  if (!f) return R.pts;const q = roadAt(R, f);return [q.p, ...R.pts.slice(q.i)];
+}
+// 여러 지점을 도로로 이은 선
+function roadLine(pts){
+  const P = pts.map(p => Array.isArray(p) ? {lat:p[0], lng:p[1]} : p);if (P.length < 2) return P.map(p => [p.lat, p.lng]);
+  const out = [];for (let i = 1; i < P.length; i++){const seg = legLine(P[i - 1], P[i], 0);out.push(...(i > 1 ? seg.slice(1) : seg));}return out;
+}
+function roadKm(a, b){const R = roadGet(a, b);return R ? R.km : hav(a, b) * CFG.roadFactor;}
+function driveMin(a, b, est){const km = est ? hav(a, b) * CFG.roadFactor : roadKm(a, b);if (km < 0.05) return 1;const sp = km < 4 ? CFG.speedTown : CFG.speedRural;return km / sp * 60;}
 function legMin(a, b){return driveMin(a, b) + CFG.unload;}
 
 /* ---------- 코스 최적화 (최근접 이웃 + 2-opt) ---------- */
 function courseStart(c){return relayState[c.id] && c.relayOpt ? RELAYS[c.relayOpt] : HUB;}
-function routeCost(start, order){let t = 0, p = start;for (const id of order){t += legMin(p, SCH[id]);p = SCH[id];}return t;}
+// 순서 최적화는 직선거리 추정값으로, 확정된 코스의 거리·시간은 실제 도로 경로로 계산
+function routeCost(start, order){let t = 0, p = start;for (const id of order){t += driveMin(p, SCH[id], true) + CFG.unload;p = SCH[id];}return t;}
 function optimizeOrder(start, ids){
   const left = ids.slice(), order = [];let p = start;
-  while (left.length){let bi = 0, bd = Infinity;left.forEach((id, i) => {const d = driveMin(p, SCH[id]);if (d < bd){bd = d;bi = i;}});const id = left.splice(bi, 1)[0];order.push(id);p = SCH[id];}
+  while (left.length){let bi = 0, bd = Infinity;left.forEach((id, i) => {const d = driveMin(p, SCH[id], true);if (d < bd){bd = d;bi = i;}});const id = left.splice(bi, 1)[0];order.push(id);p = SCH[id];}
   let best = routeCost(start, order), improved = true;
   while (improved){improved = false;
     for (let i = 0; i < order.length - 1; i++) for (let k = i + 1; k < order.length; k++){
@@ -1444,7 +1508,7 @@ function stepVehicle(v, dt){
   if (r){
     r.t += dt;
     if (r.phase === 'trunk' || r.phase === 'drive' || r.phase === 'return'){
-      const f = clamp(r.t / r.dur, 0, 1);v.lat = r.from.lat + (r.to.lat - r.from.lat) * f;v.lng = r.from.lng + (r.to.lng - r.from.lng) * f;
+      const f = clamp(r.t / r.dur, 0, 1);if (f >= 1){v.lat = r.to.lat;v.lng = r.to.lng;} else {const q = legPos(r.from, r.to, f);v.lat = q[0];v.lng = q[1];}r.f = f;
       if (f >= 1){
         if (r.phase === 'trunk'){r.phase = 'drive';r.from = {lat:v.lat, lng:v.lng};r.to = SCH[DEL.find(x => x.id === r.stops[0]).sid];r.dur = driveMin(r.from, r.to) * (0.92 + R() * .25);r.t = 0;r.legStart = SIM;const d = DEL.find(x => x.id === r.stops[0]);d.status = '출발';d.depart = SIM;}
         else if (r.phase === 'drive'){const d = DEL.find(x => x.id === r.stops[r.i]);d.status = '도착';d.arrive = SIM;r.t = 0;
@@ -1656,13 +1720,29 @@ function vehTrack(v){
   const t = v._trk, l = t[t.length - 1];
   if (!l || Math.abs(l[0] - v.lat) + Math.abs(l[1] - v.lng) > 1.5e-4){t.push(cur);if (t.length > (r ? 600 : 120)) t.shift();}
 }
+// 출발부터 현재 위치까지 지나온 도로 (운행 기록 기준)
+function legHead(a, b, f){const R = roadGet(a, b);if (!R) return [[a.lat, a.lng], legPos(a, b, f)];const q = roadAt(R, f);return [...R.pts.slice(0, q.i), q.p];}
+function vehDone(v){
+  const r = v.run;if (!r) return null;
+  const sp = id => {const d = DEL.find(x => x.id === id);return d && SCH[d.sid];};
+  const nodes = [HUB];if (r.relay) nodes.push(r.relay);
+  if (r.phase === 'trunk') return legHead(r.from, r.to, r.f || 0);
+  const upto = r.phase === 'drive' ? (r.i || 0) : r.phase === 'return' ? (r.stops || []).length : (r.i || 0) + 1;
+  (r.stops || []).slice(0, upto).forEach(id => {const s = sp(id);if (s) nodes.push(s);});
+  const base = roadLine(nodes);
+  if (['drive', 'return'].includes(r.phase) && r.from && r.to) return base.concat(legHead(r.from, r.to, r.f || 0).slice(1));
+  return base;
+}
 function vehRest(v){
   const r = v.run;if (!r) return [];
   const sp = id => {const d = DEL.find(x => x.id === id);const s = d && SCH[d.sid];return s ? [s.lat, s.lng] : null;};
-  if (r.phase === 'return') return [[v.lat, v.lng], [HUB.lat, HUB.lng]];
-  const pts = [[v.lat, v.lng]];if (r.phase === 'trunk' && r.to) pts.push([r.to.lat, r.to.lng]);
-  (r.stops || []).slice(r.i || 0).forEach(id => {const p = sp(id);if (p) pts.push(p);});pts.push([HUB.lat, HUB.lng]);
-  return pts;
+  const moving = ['trunk', 'drive', 'return'].includes(r.phase) && r.from && r.to;
+  const out = moving ? legLine(r.from, r.to, r.f || 0) : [[v.lat, v.lng]];
+  if (r.phase === 'return') return out;
+  const rest = [];if (r.phase === 'trunk') (r.stops || []).forEach(id => {const p = sp(id);if (p) rest.push(p);});
+  else (r.stops || []).slice((r.i || 0) + (moving ? 1 : 1)).forEach(id => {const p = sp(id);if (p) rest.push(p);});
+  rest.push([HUB.lat, HUB.lng]);
+  const here = out[out.length - 1];return out.concat(roadLine([moving ? [r.to.lat, r.to.lng] : here, ...rest]).slice(1));
 }
 function syncVehPaths(M, list, dot){
   if (!M.pathG) {M.pathG = L.layerGroup().addTo(M.m);M.paths = {};}
@@ -1674,17 +1754,26 @@ function syncVehPaths(M, list, dot){
       rest:L.polyline([], {color:'#2DD4BF', weight:dot ? 1.5 : 3, opacity:.9, dashArray:dot ? '3 4' : '7 6', interactive:false}).addTo(M.pathG),
       casing:L.polyline([], {color:'#ffffff', weight:dot ? 3.5 : 6.5, opacity:.75, interactive:false}).addTo(M.pathG),
       trail:L.polyline([], {color:'#12283F', weight:dot ? 2 : 4, opacity:.95, interactive:false}).addTo(M.pathG)};}
-    const pts = trk.concat([[v.lat, v.lng]]);P.trail.setLatLngs(pts);P.casing.setLatLngs(pts);
-    const st = vState(v);P.trail.setStyle({color:st === 'crit' ? '#E0453C' : st === 'warn' ? '#E59A1B' : '#12283F'});
-    P.rest.setLatLngs(dot ? [] : vehRest(v));
+    const pts = vehDone(v) || trk.concat([[v.lat, v.lng]]);P.trail.setLatLngs(pts);P.casing.setLatLngs(pts);
+    const st = vState(v);const sel = SELV === v.id, dim = SELV && !sel;
+    P.trail.setStyle({color:sel ? SEL_C : st === 'crit' ? '#E0453C' : st === 'warn' ? '#E59A1B' : '#12283F', opacity:dim ? .3 : .95, weight:(dot ? 2 : 4) + (sel ? 2 : 0)});
+    P.casing.setStyle({opacity:dim ? .2 : .75, weight:(dot ? 3.5 : 6.5) + (sel ? 2 : 0)});
+    P.rest.setStyle({color:sel ? SEL_C : '#2DD4BF', opacity:dim ? .25 : .9, weight:(dot ? 1.5 : 3) + (sel ? 1 : 0)});
+    P.rest.setLatLngs(dot && !sel ? [] : vehRest(v));
+    if (sel){P.casing.bringToFront();P.rest.bringToFront();P.trail.bringToFront();}
   });
   Object.keys(M.paths).forEach(id => {if (!seen.has(id)){Object.values(M.paths[id]).forEach(l => M.pathG.removeLayer(l));delete M.paths[id];}});
 }
+let SELV = null;const SEL_C = '#D6336C';
+function pickVeh(id){SELV = SELV === id ? null : id;Object.values(MAPS).forEach(M => {if (M.veh) M._selKey = null;});if (view === 'hub') renderHub();else if (view === 'wide') renderWide();}
 function syncVehMarkers(M, filter, dot){
+  if (!M._selBound){M._selBound = true;M.m.on('click', () => {if (SELV){SELV = null;if (view === 'hub') renderHub();else if (view === 'wide') renderWide();}});}
   VEH.filter(filter).forEach(v => {
-    const cls = vState(v) + (dot ? ' sm' : '');
-    if (!M.veh[v.id]) M.veh[v.id] = L.marker([v.lat, v.lng], {icon:truckIcon(dot ? '' : v.id, cls, v._hd), zIndexOffset:1200}).bindPopup(() => vehPopup(v)).bindTooltip(() => v.id + ' · ' + fmt1(v.temp) + '°C · ' + (v.run ? '운행 중' : v.status)).addTo(M.m);
+    const cls = vState(v) + (dot ? ' sm' : '') + (SELV === v.id ? ' pick' : SELV ? ' dim' : '');
+    if (!M.veh[v.id]){M.veh[v.id] = L.marker([v.lat, v.lng], {icon:truckIcon(dot ? '' : v.id, cls, v._hd), zIndexOffset:1200}).bindPopup(() => vehPopup(v)).bindTooltip(() => v.id + ' · ' + fmt1(v.temp) + '°C · ' + (v.run ? '운행 중' : v.status)).addTo(M.m);
+      M.veh[v.id].on('click', () => pickVeh(v.id));}
     else {M.veh[v.id].setLatLng([v.lat, v.lng]);truckSet(M.veh[v.id], cls, v._hd);}
+    M.veh[v.id].setZIndexOffset(SELV === v.id ? 2000 : 1200);
   });
   syncVehPaths(M, VEH.filter(filter), dot);
 }
@@ -1816,7 +1905,7 @@ function renderHub(){
   ].join('');
   if (MAPS.hub){
     SCHOOLS.forEach(s => {const d = by[s.id];MAPS.hub.sch[s.id].setStyle({fillColor:d ? delColor(d.status) : '#E3E8ED', radius:hubCourseHL && COURSE_OF[s.id] === hubCourseHL ? 8 : 6});});
-    COURSES.forEach(c => {const p = PLAN[c.id];const pts = [[p.start.lat, p.start.lng], ...p.order.map(id => [SCH[id].lat, SCH[id].lng])];MAPS.hub.routes[c.id].setLatLngs(pts).setStyle({opacity:hubCourseHL ? (hubCourseHL === c.id ? .9 : .12) : .35, weight:hubCourseHL === c.id ? 3.5 : 2});});
+    COURSES.forEach(c => {const p = PLAN[c.id];const pts = p._road || (p._road = roadLine([[p.start.lat, p.start.lng], ...p.order.map(id => [SCH[id].lat, SCH[id].lng])]));MAPS.hub.routes[c.id].setLatLngs(pts).setStyle({opacity:hubCourseHL ? (hubCourseHL === c.id ? .9 : .12) : .35, weight:hubCourseHL === c.id ? 3.5 : 2});});
     syncVehMarkers(MAPS.hub, v => v.region === '홍천군');
     MAPS.hub.dmk = MAPS.hub.dmk || {};const seen = new Set();
     allRunPositions().forEach(x => {const k = x.r.driverId;seen.add(k);const lbl = (x.d?.name || k) + ' (앱)';
@@ -1990,9 +2079,9 @@ function renderGis(fit){
     `</tbody><tfoot><tr><td></td><td class="small muted" colspan="7">주유소·충전소: 학교 반경 ${km}km 안 개수 · 가장 가까운 거리(km). 마우스를 올리면 이름이 보입니다.</td></tr></tfoot>`;
   if (!MAPS.gis) return;const G = MAPS.gis;
   G.layers.route.clearLayers();G.layers.radius.clearLayers();G.relay.clearLayers();
-  COURSES.forEach(cc => {if (relayState[cc.id] && cc.relayOpt){const r = RELAYS[cc.relayOpt];L.polyline([[HUB.lat, HUB.lng], [r.lat, r.lng]], {color:'#12283F', weight:1.5, dashArray:'6 5', opacity:.6}).addTo(G.relay);L.marker([r.lat, r.lng], {icon:divIcon(r.name, 'hub-ico'), zIndexOffset:800}).addTo(G.relay);}});
-  COURSES.filter(cc => cc.id !== gisCourse).forEach(cc => {const pp = PLAN[cc.id];L.polyline([[pp.start.lat, pp.start.lng], ...pp.order.map(id => [SCH[id].lat, SCH[id].lng])], {color:'#D6E0E8', weight:1.5, opacity:.7}).addTo(G.layers.route);});
-  p.legs.forEach((l, i) => {const s = SCH[l.id];L.polyline([[l.from.lat, l.from.lng], [s.lat, s.lng]], {color:l.ok ? '#0B8893' : '#C8322B', weight:4, opacity:.9}).bindTooltip(`${i + 1}구간 ${Math.round(l.leg)}분 · ${fmt1(l.km)}km`, {sticky:true}).addTo(G.layers.route);
+  COURSES.forEach(cc => {if (relayState[cc.id] && cc.relayOpt){const r = RELAYS[cc.relayOpt];L.polyline(roadLine([[HUB.lat, HUB.lng], [r.lat, r.lng]]), {color:'#12283F', weight:1.5, dashArray:'6 5', opacity:.6}).addTo(G.relay);L.marker([r.lat, r.lng], {icon:divIcon(r.name, 'hub-ico'), zIndexOffset:800}).addTo(G.relay);}});
+  COURSES.filter(cc => cc.id !== gisCourse).forEach(cc => {const pp = PLAN[cc.id];L.polyline(roadLine([[pp.start.lat, pp.start.lng], ...pp.order.map(id => [SCH[id].lat, SCH[id].lng])]), {color:'#D6E0E8', weight:1.5, opacity:.7}).addTo(G.layers.route);});
+  p.legs.forEach((l, i) => {const s = SCH[l.id];L.polyline(roadLine([[l.from.lat, l.from.lng], [s.lat, s.lng]]), {color:l.ok ? '#0B8893' : '#C8322B', weight:4, opacity:.9}).bindTooltip(`${i + 1}구간 ${Math.round(l.leg)}분 · ${fmt1(l.km)}km`, {sticky:true}).addTo(G.layers.route);
     L.marker([s.lat, s.lng], {icon:divIcon(i + 1, 'stop-ico' + (l.ok ? '' : ' bad') + (s.id === gisSchool ? ' sel' : '')), zIndexOffset:s.id === gisSchool ? 1200 : 1100}).bindTooltip(s.name).on('click', () => selectGisSchool(s.id)).addTo(G.layers.route);
     L.circle([s.lat, s.lng], {radius:km * 1000, color:'#0B8893', weight:1, fillOpacity:.04, dashArray:'3 3'}).addTo(G.layers.radius);});
   if (fit){const b = L.latLngBounds([[p.start.lat, p.start.lng], ...p.order.map(id => [SCH[id].lat, SCH[id].lng])]);G.m.fitBounds(b.pad(.15), {maxZoom:13});}
@@ -2142,9 +2231,8 @@ function drvMapUpdate(v){
   }
   if (r){
     const last = M.trail[M.trail.length - 1];if (!last || Math.abs(last[0] - v.lat) + Math.abs(last[1] - v.lng) > 1e-5) M.trail.push([v.lat, v.lng]);
-    M.done.setLatLngs(M.trail);
-    const rest = r.phase === 'return' ? [[v.lat, v.lng], [HUB.lat, HUB.lng]] : [[v.lat, v.lng], ...r.stops.slice(r.i).map(id => {const s = SCH[DEL.find(d => d.id === id).sid];return [s.lat, s.lng];})];
-    M.path.setLatLngs(rest);
+    M.done.setLatLngs(vehDone(v) || M.trail);
+    M.path.setLatLngs(vehRest(v));
     r.stops.forEach((id, i) => {const el = M.stopMk[i]?.getElement()?.firstChild;if (!el) return;const d = DEL.find(x => x.id === id);el.className = 'stop-ico' + (d?.status === '인수완료' ? ' ok' : i === r.i && r.phase !== 'return' ? ' sel' : '');});
     if ($('#drvFollow')?.checked) M.m.panTo([v.lat, v.lng], {animate:true, duration:.8});
     const ph = {trunk:'중계거점으로 이동', drive:'학교로 이동 중', arrived:'학교 도착', unload:'하차 중', unload_m:'하차 중', return:'센터 복귀'}[r.phase] || '';
@@ -3000,7 +3088,7 @@ async function pwHash(pw, saltB64, iter){
 function loginIdOf(d){return (d.loginId || d.id).toLowerCase();}
 function sessDriver(){
   const s = DA.sess;if (!s || Date.now() > s.exp) return null;
-  const a = DA.auth[s.driverId];if (a && a.at !== s.authAt) return null; // 센터가 비밀번호를 바꾸면 세션 만료
+  const a = DA.auth[s.driverId];if (a && !s.test && a.at !== s.authAt) return null; // 센터가 비밀번호를 바꾸면 세션 만료
   return driverList().find(d => d.id === s.driverId) || null;
 }
 function saveSess(s, keep){DA.sess = s;try{sessionStorage.removeItem('gfl:sess');localStorage.removeItem('gfl:sess');if (s) (keep ? localStorage : sessionStorage).setItem('gfl:sess', JSON.stringify(s));}catch(e){}}
@@ -3011,7 +3099,13 @@ async function doLogin(form){
   const lk = lockInfo();if (Date.now() < lk.until){show(`로그인 시도가 많아 ${Math.ceil((lk.until - Date.now()) / 60000)}분 뒤에 다시 시도할 수 있습니다.`, true);return;}
   const F = form.elements;const id = F.lgId.value.trim().toLowerCase(), pw = F.lgPw.value;
   if (!id || !pw){show('아이디와 비밀번호를 입력하세요.', true);return;}
-  if (!DB){show('공유 DB에 연결된 화면에서만 로그인할 수 있습니다. Claude 앱이나 claude.ai에서 열어 주세요.', true);return;}
+  // 시험용 계정 1 / 1 → 첫 번째 기사로 로그인 (운영 전 삭제 권장)
+  if (id === '1' && pw === '1'){const d0 = driverList()[0];F.lgPw.value = '';if (!d0){show('등록된 기사가 없습니다. 관리자에게 문의하세요.', true);return;}
+    setLock({n:0, until:0});
+    if (!DB){DA.demo = d0.id;DA.out = false;DA.page = 'today';DA.sel = null;toast(`${d0.name || d0.id} 기사님, 시험 계정으로 로그인했습니다.`);return daRender();}
+    const a0 = DA.auth[d0.id];saveSess({driverId:d0.id, authAt:a0 ? a0.at : undefined, exp:Date.now() + 12 * 3600e3, at:Date.now(), test:true}, F.lgKeep.checked);
+    DA.out = false;try{sessionStorage.removeItem('gfl:out');}catch(e){}DA.page = 'today';DA.sel = null;toast(`${d0.name || d0.id} 기사님, 시험 계정으로 로그인했습니다.`);return daRender();}
+  if (!DB){show('아이디 또는 비밀번호가 맞지 않습니다. 관리자에게 문의하세요.', true);return;}
   show('확인 중…');
   const d = driverList().find(x => loginIdOf(x) === id);
   let a = d ? DA.auth[d.id] : null;
@@ -3019,7 +3113,7 @@ async function doLogin(form){
   let ok = false;if (d && a){try{ok = (await pwHash(pw, a.salt, a.iter)) === a.hash;}catch(e){ok = false;}}
   F.lgPw.value = '';
   if (!ok){const n = lk.n + 1;setLock(n >= 5 ? {n:0, until:Date.now() + 5 * 60000} : {n, until:0});
-    show(d && !a ? '아직 비밀번호가 설정되지 않은 아이디입니다. 센터에 문의하세요.' : `아이디 또는 비밀번호가 맞지 않습니다. (${n >= 5 ? '5분간 잠김' : n + '/5'})`, true);return;}
+    show(`아이디 또는 비밀번호가 맞지 않습니다. 관리자에게 문의하세요. (${n >= 5 ? '5분간 잠김' : n + '/5'})`, true);return;}
   setLock({n:0, until:0});
   saveSess({driverId:d.id, authAt:a.at, exp:Date.now() + 12 * 3600e3, at:Date.now()}, F.lgKeep.checked);
   DA.out = false;try{sessionStorage.removeItem('gfl:out');}catch(e){}
@@ -3196,13 +3290,13 @@ function runPos(run){
   if (run.pos && run.pos.at >= lastChange) return {lat:run.pos.lat, lng:run.pos.lng, src:'수동 보고', txt:run.pos.label || '기사 보고 위치', at:run.pos.at};
   const i = curIdx(run);
   if (i < 0){const ls = SCH[run.stops[run.stops.length - 1].sid];const el = (Date.now() - (run.endedAt || Date.now())) / 60000 * (run.speed || 1);const dur = driveMin(ls, HUB);const f = clamp(el / dur, 0, 1);
-    return {lat:ls.lat + (HUB.lat - ls.lat) * f, lng:ls.lng + (HUB.lng - ls.lng) * f, src:'운행 기록', txt:f >= 1 ? '센터 도착' : '센터 복귀 중', at:Date.now()};}
+    const q0 = legPos(ls, HUB, f);return {lat:q0[0], lng:q0[1], src:'운행 기록', txt:f >= 1 ? '센터 도착' : '센터 복귀 중', at:Date.now()};}
   const st = run.stops[i];const to = SCH[st.sid];
   if (st.status === '도착') return {lat:to.lat, lng:to.lng, src:'운행 기록', txt:`${to.name} 하차 중`, at:st.arrive};
   const from = i === 0 ? start : SCH[run.stops[i - 1].sid];const dur = driveMin(from, to);
   const el = (Date.now() - (st.depart || run.startedAt)) / 60000 * (run.speed || 1);const f = clamp(el / dur, 0, .97);
   const remKm = roadKm(from, to) * (1 - f);
-  return {lat:from.lat + (to.lat - from.lat) * f, lng:from.lng + (to.lng - from.lng) * f, src:'운행 기록', txt:`${to.name}(으)로 이동 · ${fmt1(remKm)}km 남음`, eta:(st.depart || run.startedAt) + dur * 60000 / (run.speed || 1), at:Date.now()};
+  const q1 = legPos(from, to, f);return {lat:q1[0], lng:q1[1], src:'운행 기록', txt:`${to.name}(으)로 이동 · ${fmt1(remKm)}km 남음`, eta:(st.depart || run.startedAt) + dur * 60000 / (run.speed || 1), at:Date.now()};
 }
 function allRunPositions(){
   return Object.values(DA.runs).filter(r => r.date === TODAY).map(r => {const d = driverList().find(x => x.id === r.driverId);return {r, d, p:runPos(r)};});
@@ -3285,8 +3379,8 @@ function daRouteUpdate(d, fit){
   let pts = [];
   if (c){const p = PLAN[c.id];const ed = CE.edit && CE.edit.courseId === c.id && DA.page === 'route' && !run ? CE.edit.order : null;const order = run ? run.stops.map(s => s.sid) : (ed || p.order);const start = run ? startOf(run.course) : p.start;
     pts = [[start.lat, start.lng], ...order.map(sid => [SCH[sid].lat, SCH[sid].lng])];
-    if (run){const i0 = curIdx(run);const cut = i0 < 0 ? pts.length : i0 + 1;L.polyline(pts.slice(0, cut), {color:'#94A3B8', weight:4, opacity:.9, dashArray:'2 6'}).addTo(g);L.polyline(pts.slice(Math.max(0, cut - 1)), {color:'#2DD4BF', weight:4, opacity:.95}).addTo(g);}
-    else L.polyline(pts, {color:'#2DD4BF', weight:4, opacity:.9}).addTo(g);
+    if (run){const i0 = curIdx(run);const cut = i0 < 0 ? pts.length : i0 + 1;L.polyline(roadLine(pts.slice(0, cut)), {color:'#94A3B8', weight:4, opacity:.9, dashArray:'2 6'}).addTo(g);L.polyline(roadLine([...pts.slice(Math.max(0, cut - 1)), [HUB.lat, HUB.lng]]), {color:'#2DD4BF', weight:4, opacity:.95}).addTo(g);}
+    else L.polyline(roadLine([...pts, [HUB.lat, HUB.lng]]), {color:'#2DD4BF', weight:4, opacity:.9}).addTo(g);
     L.marker([start.lat, start.lng], {icon:divIcon(start.name.replace(' 통합물류센터', ''), 'hub-ico main')}).addTo(g);
     order.forEach((sid, i) => {const st = run?.stops[i];L.marker([SCH[sid].lat, SCH[sid].lng], {icon:divIcon(i + 1, 'stop-ico' + (st?.status === '완료' ? ' ok' : ''))}).bindPopup(`<b>${i + 1}. ${esc(SCH[sid].name)}</b><br>${esc(SCH[sid].addr)}<br>식자재 ${(STD.orders[sid]?.lines || []).length}개 품목<div style="margin-top:6px"><button class="btn sm pri" data-da="sel" data-i="${i}">배송 식자재 보기</button></div>`).addTo(g);});}
   daLiveUpdate(d);
