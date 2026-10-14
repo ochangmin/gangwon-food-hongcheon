@@ -764,6 +764,7 @@ main{padding-block:18px 40px;padding-left:max(16px,env(safe-area-inset-left,0px)
 .mapstyle button[aria-pressed="true"]{background:var(--navy);color:#fff;font-weight:600}
 .attr{position:absolute;right:4px;bottom:2px;z-index:500;font-size:10px;color:#fff;text-shadow:0 0 2px #000;pointer-events:none;max-width:70%;text-align:right}
 .plain .attr{color:var(--ink3);text-shadow:none}
+.stop-ico.sel{background:var(--accent);color:#fff;transform:translate(-50%,-50%) scale(1.25);box-shadow:0 0 0 4px rgba(11,136,147,.25)}
 .stop-ico{width:20px;height:20px;border-radius:50%;background:#fff;border:2px solid var(--accent);font:700 10px/16px var(--f-mono);text-align:center;color:var(--accent);transform:translate(-50%,-50%);position:absolute}
 .stop-ico.bad{border-color:var(--crit);color:var(--crit)}
 .leaflet-popup-content{font-size:12.5px;line-height:1.5;margin:10px 12px}
@@ -1041,6 +1042,10 @@ body.driver-mode{background:#EEF2F5}
     <div class="panel"><div class="ph"><h3>차량 목록</h3><span class="sub" id="vehCount"></span></div><div class="vlist" id="vehList"></div></div>
     <div class="stack" id="vehDetail"></div>
   </div>
+  <div class="panel" id="hotPanel"><div class="ph"><h3>하차 중 고온 기록</h3><span class="sub" id="hotSub">학교 하차(문 열림)부터 온도 회복까지 최고 온도가 기준 이상이었던 건만 따로 저장합니다</span>
+    <div class="r"><select class="in" id="hotDate" aria-label="날짜"></select><select class="in" id="hotSt" aria-label="조치 상태"><option value="">전체 상태</option><option>미확인</option><option>확인</option><option>조치완료</option></select><button class="btn sm" id="hotCsv">CSV</button></div></div>
+    <div class="pb kpis" id="hotKpi" style="padding-bottom:0"></div>
+    <div class="tw scroll" style="max-height:460px"><table class="t" id="hotTbl"></table></div></div>
 </section>
 
 <!-- 배송 -->
@@ -1090,6 +1095,7 @@ body.driver-mode{background:#EEF2F5}
     <div class="stack">
       <div class="panel"><div class="ph"><h3>코스 선택</h3><div class="r"><label class="field" style="flex-direction:row;align-items:center;gap:6px">반경<select id="radiusKm"><option>1</option><option>2</option><option selected>3</option><option>5</option><option>10</option></select>km</label></div></div>
         <div class="pb" style="display:flex;flex-direction:column;gap:8px" id="courseCtl"></div></div>
+      <div class="panel" id="gisFoodPanel"><div class="ph"><h3>학교 배송 식자재</h3><span class="sub" id="gisFoodSub">지도 번호나 아래 학교 이름을 누르세요</span><div class="r" id="gisFoodAct"></div></div><div class="pb" id="gisFood"></div></div>
       <div class="panel"><div class="ph"><h3 id="legTitle">구간별 판정</h3></div><div class="tw scroll" style="max-height:440px"><table class="t" id="legTbl"></table></div></div>
     </div>
   </div>
@@ -1281,7 +1287,7 @@ const REGIONS = [
 const DRIVERS = ['김도현','이상훈','박정민','최영수','정하늘','강민재','윤서준','장태호'];
 
 /* ---------- 설정 ---------- */
-const DEF_CFG = {tMin:0, tMax:5, hMax:85, doorMax:5, legLimit:30, unload:7, roadFactor:1.3, speedTown:28, speedRural:52, outTemp:17};
+const DEF_CFG = {tMin:0, tMax:5, hotPeak:5, hMax:85, doorMax:5, legLimit:30, unload:7, roadFactor:1.3, speedTown:28, speedRural:52, outTemp:17};
 let CFG = Object.assign({}, DEF_CFG, store.get('cfg', {}));
 const relayState = store.get('relay', Object.fromEntries(COURSES.map(c => [c.id, !!c.relay])));
 
@@ -1367,6 +1373,54 @@ function startCourse(c, date, meal){
   return true;
 }
 
+/* ---------- 하차 고온 기록 (unload_hot) ---------- */
+const HOT = {rows:{}, local:{}, sig:''};
+function finishDoorEvent(e){
+  if (!e || !e.did || e._saved || !(e.peak >= CFG.hotPeak)) return;e._saved = true;
+  const d = DEL.find(x => x.id === e.did);const v = VID(e.vid);const sc = SCH[e.sid];
+  const rec = {date:e.date || TODAY, time:hhmm(e.t), sid:e.sid || '', school:sc?.name || '', course:COURSE_OF[e.sid] || '', meal:d?.meal || '', veh:e.vid, driver:v?.driver || '',
+    start:+e.start.toFixed(1), peak:+e.peak.toFixed(1), openMin:+e.open.toFixed(1), recoverMin:e.recover != null ? +e.recover.toFixed(1) : null, limit:CFG.hotPeak,
+    status:'미확인', note:'', at:Date.now(), src:'시연'};
+  const id = (rec.date + '_' + String(e.did)).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 120);
+  alert('warn', `${rec.school} 하차 중 최고 ${fmt1(rec.peak)}°C`, `${rec.veh} · 하차 고온 기록에 저장했습니다.`, rec.veh);
+  if (DB && DA.adminView) DB.doc('unload_hot/' + id).set(rec).catch(() => {HOT.local[id] = rec;});
+  else HOT.local[id] = rec;
+}
+function hotAll(){return Object.entries(Object.assign({}, HOT.local, HOT.rows)).map(([id, r]) => Object.assign({id}, r)).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));}
+function renderHot(force){
+  if (!$('#hotTbl')) return;
+  const all = hotAll();
+  const dates = [...new Set(all.map(r => r.date))].sort().reverse();
+  const dSel = $('#hotDate');const cur = dSel.value;
+  const opts = '<option value="">전체 날짜</option>' + dates.map(x => `<option ${x === cur ? 'selected' : ''}>${x}</option>`).join('');
+  if (dSel.dataset.o !== opts){dSel.innerHTML = opts;dSel.dataset.o = opts;}
+  const fd = dSel.value, fs = $('#hotSt').value;
+  const rows = all.filter(r => (!fd || r.date === fd) && (!fs || r.status === fs));
+  const sig = JSON.stringify(rows.map(r => [r.id, r.status, r.note, r.peak])) + fd + fs + DA.adminView;
+  if (!force && sig === HOT.sig) return;
+  if ($('#hotTbl').contains(document.activeElement)) return;
+  HOT.sig = sig;
+  const edit = !DB || DA.adminView;
+  $('#hotKpi').innerHTML = kpi('기록', rows.length, '건', '기준 최고 ' + CFG.hotPeak + '°C 이상', rows.length ? 'warn' : 'ok') + kpi('미확인', rows.filter(r => r.status === '미확인').length, '건', '확인 필요', rows.some(r => r.status === '미확인') ? 'crit' : 'ok') + kpi('최고 온도', rows.length ? fmt1(Math.max(...rows.map(r => r.peak))) : '-', '°C', '하차 중') + kpi('평균 문 열림', rows.length ? fmt1(rows.reduce((a, r) => a + (r.openMin || 0), 0) / rows.length) : '-', '분', '건당');
+  $('#hotTbl').innerHTML = `<thead><tr><th>일시</th><th>학교</th><th>코스·식사</th><th>차량</th><th class="n">도착 시</th><th class="n">최고</th><th class="n">문 열림</th><th class="n">회복</th><th>조치</th><th>메모</th><th></th></tr></thead><tbody>${rows.map(r => `<tr>
+    <td class="mono small">${esc(r.date.slice(5))} ${esc(r.time || '')}</td><td>${r.sid && SCH[r.sid] ? `<button class="sname" data-school="${esc(r.sid)}">${esc(r.school)}</button>` : esc(r.school)}</td>
+    <td class="small">${esc(r.course)} · ${esc(r.meal)}</td><td class="small">${esc(r.veh)}${r.driver ? ' · ' + esc(r.driver) : ''}</td>
+    <td class="n">${fmt1(r.start)}°C</td><td class="n" style="font-weight:700;color:var(--crit)">${fmt1(r.peak)}°C</td><td class="n">${fmt1(r.openMin)}분</td><td class="n">${r.recoverMin != null ? fmt1(r.recoverMin) + '분' : '-'}</td>
+    <td>${edit ? `<select class="in" data-hst="${esc(r.id)}">${['미확인', '확인', '조치완료'].map(x => `<option ${x === r.status ? 'selected' : ''}>${x}</option>`).join('')}</select>` : `<span class="pill ${r.status === '조치완료' ? 'ok' : r.status === '확인' ? '' : 'crit'}">${esc(r.status)}</span>`}</td>
+    <td>${edit ? `<input class="in" data-hnote="${esc(r.id)}" value="${esc(r.note || '')}" maxlength="100" placeholder="원인·조치" style="min-width:140px">` : esc(r.note || '')}</td>
+    <td>${edit ? `<button class="btn sm danger" data-hdel="${esc(r.id)}">삭제</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="11"><div class="empty">기준 이상으로 올라간 하차 기록이 없습니다.</div></td></tr>'}</tbody>`;
+  $('#hotSub').textContent = `하차(문 열림)부터 온도 회복까지 최고 ${CFG.hotPeak}°C 이상 · ${DB ? '공유 DB 저장' : '이 브라우저에만 임시 저장'}`;
+}
+async function hotUpdate(id, patch){
+  if (HOT.rows[id] && DB){await dbWrite(() => DB.doc('unload_hot/' + id).update(patch));}
+  else if (HOT.local[id]){Object.assign(HOT.local[id], patch);}
+  renderHot(true);
+}
+async function hotDelete(id){
+  if (HOT.rows[id] && DB){await dbWrite(() => DB.doc('unload_hot/' + id).delete(), '기록을 삭제했습니다.');}
+  delete HOT.local[id];renderHot(true);
+}
+
 /* ---------- 경보 ---------- */
 function alert(sev, title, body, vid){ALERTS.unshift({id:Math.random().toString(36).slice(2), sev, title, body, vid, t:SIM, ack:false});ALERTS = ALERTS.slice(0, 120);}
 
@@ -1403,7 +1457,7 @@ function stepVehicle(v, dt){
   if (v._doorUntil && SIM >= v._doorUntil){v.door = false;v._doorUntil = 0;}
   if (v._gpsUntil && SIM >= v._gpsUntil){v.gps = true;v._gpsUntil = 0;}
   // 문 열림 기록 추적
-  if (v.ev){const e = v.ev;e.peak = Math.max(e.peak, v.temp);if (v.door) e.open += dt;else if (e.recover == null){e.rt += dt;if (v.temp <= e.start + .5){e.recover = e.rt;v.ev = null;}else if (e.rt > 60){e.recover = e.rt;v.ev = null;}}}
+  if (v.ev){const e = v.ev;e.peak = Math.max(e.peak, v.temp);if (v.door) e.open += dt;else if (e.recover == null){e.rt += dt;if (v.temp <= e.start + .5){e.recover = e.rt;v.ev = null;finishDoorEvent(e);}else if (e.rt > 60){e.recover = e.rt;v.ev = null;finishDoorEvent(e);}}}
   v.hist.push(+v.temp.toFixed(2));if (v.hist.length > 60) v.hist.shift();
   if (v.run && ['drive','arrived','unload','unload_m'].includes(v.run.phase)){const d = DEL.find(x => x.id === v.run.stops[v.run.i]);
     if (d){(d.trace = d.trace || []).push([Math.round(SIM * 10) / 10, +v.temp.toFixed(2), Math.round(v.hum), v.door ? 1 : 0]);if (d.trace.length > 120) d.trace.shift();
@@ -1774,7 +1828,7 @@ function renderGis(fit){
   $('#legTitle').textContent = `${c.id} · ${c.name} 구간별 판정`;
   $('#legTbl').innerHTML = `<thead><tr><th class="n">#</th><th>학교</th><th class="n">거리</th><th class="n">주행</th><th class="n">구간</th><th>판정</th><th class="n">주유소</th><th class="n">충전소</th></tr></thead><tbody>` +
     p.legs.map((l, i) => {const s = SCH[l.id];const f = stationsNear(s, 'F', km), e = stationsNear(s, 'E', km);
-      return `<tr><td class="n">${i + 1}</td><td><button class="sname" data-school="${s.id}">${esc(s.name)}</button><div class="small muted">${i === 0 ? p.start.name : SCH[p.legs[i - 1].id].name}에서</div></td><td class="n">${fmt1(l.km)}km</td><td class="n">${Math.round(l.drive)}</td><td class="n" style="font-weight:600;color:${l.ok ? 'var(--ink)' : 'var(--crit)'}">${Math.round(l.leg)}분</td><td>${l.ok ? '<span class="pill ok">적합</span>' : '<span class="pill crit">초과</span>'}</td>
+      return `<tr><td class="n">${i + 1}</td><td><button class="sname" data-gsch="${s.id}" style="${s.id === gisSchool ? 'text-decoration:underline;color:var(--accent)' : ''}">${esc(s.name)}</button><div class="small muted">${i === 0 ? p.start.name : SCH[p.legs[i - 1].id].name}에서</div></td><td class="n">${fmt1(l.km)}km</td><td class="n">${Math.round(l.drive)}</td><td class="n" style="font-weight:600;color:${l.ok ? 'var(--ink)' : 'var(--crit)'}">${Math.round(l.leg)}분</td><td>${l.ok ? '<span class="pill ok">적합</span>' : '<span class="pill crit">초과</span>'}</td>
       <td class="n" title="${esc(f.map(x => x.name).join(', '))}">${f.length ? f.length + '곳 · ' + fmt1(f[0].d) : '-'}</td><td class="n" title="${esc(e.map(x => x.name).join(', '))}">${e.length ? e.length + '곳 · ' + fmt1(e[0].d) : '-'}</td></tr>`;}).join('') +
     `</tbody><tfoot><tr><td></td><td class="small muted" colspan="7">주유소·충전소: 학교 반경 ${km}km 안 개수 · 가장 가까운 거리(km). 마우스를 올리면 이름이 보입니다.</td></tr></tfoot>`;
   if (!MAPS.gis) return;const G = MAPS.gis;
@@ -1782,9 +1836,41 @@ function renderGis(fit){
   COURSES.forEach(cc => {if (relayState[cc.id] && cc.relayOpt){const r = RELAYS[cc.relayOpt];L.polyline([[HUB.lat, HUB.lng], [r.lat, r.lng]], {color:'#12283F', weight:1.5, dashArray:'6 5', opacity:.6}).addTo(G.relay);L.marker([r.lat, r.lng], {icon:divIcon(r.name, 'hub-ico'), zIndexOffset:800}).addTo(G.relay);}});
   COURSES.filter(cc => cc.id !== gisCourse).forEach(cc => {const pp = PLAN[cc.id];L.polyline([[pp.start.lat, pp.start.lng], ...pp.order.map(id => [SCH[id].lat, SCH[id].lng])], {color:'#D6E0E8', weight:1.5, opacity:.7}).addTo(G.layers.route);});
   p.legs.forEach((l, i) => {const s = SCH[l.id];L.polyline([[l.from.lat, l.from.lng], [s.lat, s.lng]], {color:l.ok ? '#0B8893' : '#C8322B', weight:4, opacity:.9}).bindTooltip(`${i + 1}구간 ${Math.round(l.leg)}분 · ${fmt1(l.km)}km`, {sticky:true}).addTo(G.layers.route);
-    L.marker([s.lat, s.lng], {icon:divIcon(i + 1, 'stop-ico' + (l.ok ? '' : ' bad')), zIndexOffset:1100}).bindPopup(() => schoolPopup(s.id)).addTo(G.layers.route);
+    L.marker([s.lat, s.lng], {icon:divIcon(i + 1, 'stop-ico' + (l.ok ? '' : ' bad') + (s.id === gisSchool ? ' sel' : '')), zIndexOffset:s.id === gisSchool ? 1200 : 1100}).bindTooltip(s.name).on('click', () => selectGisSchool(s.id)).addTo(G.layers.route);
     L.circle([s.lat, s.lng], {radius:km * 1000, color:'#0B8893', weight:1, fillOpacity:.04, dashArray:'3 3'}).addTo(G.layers.radius);});
   if (fit){const b = L.latLngBounds([[p.start.lat, p.start.lng], ...p.order.map(id => [SCH[id].lat, SCH[id].lng])]);G.m.fitBounds(b.pad(.15), {maxZoom:13});}
+  renderGisFood();
+}
+/* GIS: 학교를 누르면 지금 그 학교로 가고 있는 식자재 */
+let gisSchool = null;
+function selectGisSchool(sid){gisSchool = sid;renderGis(false);if (innerWidth < 1100) $('#gisFoodPanel')?.scrollIntoView({behavior:'smooth', block:'start'});}
+function gisDelivery(sid){
+  const ds = DEL.filter(x => x.sid === sid && x.date === TODAY);
+  const rank = {'출발':0, '도착':1, '배차':2, '접수':3, '인수완료':4};
+  return ds.sort((a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9))[0] || null;
+}
+function renderGisFood(){
+  const box = $('#gisFood');if (!box) return;
+  const c = COURSES.find(x => x.id === gisCourse);
+  if (!gisSchool || COURSE_OF[gisSchool] !== gisCourse) gisSchool = (c && PLAN[c.id]?.order?.[0]) || null;
+  if (!gisSchool){box.innerHTML = '<div class="empty">학교를 선택하세요.</div>';return;}
+  const s = SCH[gisSchool];const d = gisDelivery(gisSchool);const v = d?.veh ? VID(d.veh) : null;
+  const p = PLAN[gisCourse];const idx = p ? p.order.indexOf(gisSchool) : -1;const leg = idx >= 0 ? p.legs[idx] : null;
+  $('#gisFoodSub').textContent = `${s.name} · ${gisCourse} 코스 ${idx + 1}번째`;
+  $('#gisFoodAct').innerHTML = `<button class="btn sm" data-school="${s.id}">학교 상세</button>`;
+  const st = d ? d.status : '배송 없음';
+  const stCls = {'출발':'warn', '도착':'warn', '인수완료':'ok'}[st] || '';
+  const ship = typeof shipForSchool === 'function' ? shipForSchool(s.id).filter(o => (o.date || '') === TODAY) : [];
+  let h = `<div class="row" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">
+    <span class="pill ${stCls}">${esc(d ? d.meal + ' ' + st : st)}</span>
+    ${v ? `<span class="pill ${v.temp > CFG.tMax || v.temp < CFG.tMin ? 'crit' : 'ok'}">${esc(v.id)} 적재함 ${fmt1(v.temp)}°C · 습도 ${Math.round(v.hum)}%</span>${v.door ? '<span class="pill warn">문 열림</span>' : ''}` : '<span class="pill">배차 전</span>'}
+    ${leg ? `<span class="pill ${leg.ok ? 'ok' : 'crit'}">구간 ${Math.round(leg.leg)}분 ${leg.ok ? '· 30분 이내' : '· 초과'}</span>` : ''}
+    ${d?.depart != null ? `<span class="small muted">출발 ${hhmm(d.depart)}${d.arrive != null ? ' · 도착 ' + hhmm(d.arrive) : ''}</span>` : ''}</div>`;
+  h += d ? ((STD.orders[s.id]?.lines || []).length ? inlineFood(d) : '<div class="small muted">이 학교로 가는 발주 식자재가 아직 없습니다. 학교 상세에서 발주 품목을 추가하면 여기에 표시됩니다.</div>') : (STD.orders[s.id]?.lines?.length ? '<div class="small muted">오늘 배송이 등록되지 않았습니다. 학교급식 배송 탭에서 배차하면 여기에 식자재가 표시됩니다.</div>' : '<div class="small muted">이 학교의 오늘 배송과 발주 식자재가 없습니다.</div>');
+  if (ship.length){
+    h += `<div style="margin-top:12px"><b class="small">umji 오늘 출고분</b> <span class="small muted">${ship.length}건</span>${shipListHtml(s.id, 12)}</div>`;
+  }
+  box.innerHTML = h;
 }
 
 /* ---------- 렌더: 분석 ---------- */
@@ -1892,7 +1978,7 @@ function initDrvMap(){const m = baseMap('mapDrv');polyStyle(L.geoJSON(DATA.emd).
 
 /* ---------- 설정 ---------- */
 const CFG_FIELDS = {
-  cfgAlert:[['tMin', '적재함 최저 온도', '°C', .5], ['tMax', '적재함 최고 온도', '°C', .5], ['hMax', '최고 습도', '%', 1], ['doorMax', '문 열림 경보', '분', 1], ['outTemp', '바깥 기온(시뮬레이션)', '°C', 1]],
+  cfgAlert:[['tMin', '적재함 최저 온도', '°C', .5], ['tMax', '적재함 최고 온도', '°C', .5], ['hotPeak', '하차 고온 기록 기준', '°C', .5], ['hMax', '최고 습도', '%', 1], ['doorMax', '문 열림 경보', '분', 1], ['outTemp', '바깥 기온(시뮬레이션)', '°C', 1]],
   cfgRoute:[['legLimit', '구간 기준 시간', '분', 1], ['unload', '학교당 하차·검수', '분', 1], ['roadFactor', '도로계수 (직선→도로)', '배', .05], ['speedTown', '시내 평균속도', 'km/h', 1], ['speedRural', '국도 평균속도', 'km/h', 1]]
 };
 function renderCfg(){
@@ -2001,12 +2087,14 @@ async function initDb(){
   if (!DB){dbBadge('보기 전용 · 공유 DB 없음', 'warn');daRender();renderAcct();dbReadyResolve();
     // 독립 웹사이트(급식.shop)에서는 최근 umji 출고 스냅샷을 읽어 보여 준다
     try{const r = await fetch('data/ship-latest.json', {cache:'no-store'});if (r.ok){const j = await r.json();SHIP.batches = j.batches || {};SHIP.rows = j.rows || {};renderShip();}}catch(e){}
+    try{const r = await fetch('data/orders-demo.json', {cache:'no-store'});if (r.ok){const j = await r.json();Object.entries(j).forEach(([k, o]) => STD.orders[k] = Object.assign({example:true}, o));ordDirty = true;daRender(true);}}catch(e){}
     return;}
   dbBadge('공유 DB 연결됨', 'ok');
   DB.collection('std_center').limit(1000).onSnapshot(sn => {STD.center = {};sn.docs.forEach(d => STD.center[d.id] = d.data());if (view === 'std') renderStd();if (drawer?.code) renderStdDrawer();}, e => dbBadge('DB 오류: ' + e.code, 'crit'));
   DB.collection('std_custom').limit(1000).onSnapshot(sn => {STD.custom = {};sn.docs.forEach(d => STD.custom[d.id] = Object.assign({code:d.id}, d.data()));if (view === 'std') renderStd();}, e => {});
   DB.collection('orders').limit(200).onSnapshot(sn => {STD.orders = {};sn.docs.forEach(d => STD.orders[d.id] = d.data());if (drawer?.sid){ordDirty = true;renderDrawer(false);}daRender(true);}, e => {});
   try{DA.adminView = USER ? await USER.canEdit() : false;}catch(e){}
+  DB.collection('unload_hot').limit(1000).onSnapshot(sn => {HOT.rows = {};sn.docs.forEach(d => HOT.rows[d.id] = d.data());if (view === 'veh') renderHot(true);}, e => {});
   initDriverDb();daRender();renderAcct();dbReadyResolve();
 }
 async function dbWrite(fn, okMsg){
@@ -2274,11 +2362,12 @@ function refresh(){
   $('#clock').textContent = `${TODAY.slice(5).replace('-', '.')} ${hhmm(SIM)}`;
   if (view === 'wide') renderWide();
   if (view === 'hub') renderHub();
-  if (view === 'veh'){renderVehList();renderVehDetail(false);}
+  if (view === 'veh'){renderVehList();renderVehDetail(false);renderHot(false);}
   if (view === 'del' && !document.activeElement?.matches?.('#delTbl select') && !$('#delTbl .confirm')){
     const sig = DEL.map(d => d.id + d.status + d.veh).join('|') + '#' + Object.entries(STD.orders).map(([k, o]) => k + (o.lines || []).length + (o.at || '')).join('|') + Object.keys(STD.center).length;if (sig !== refresh._sig){refresh._sig = sig;renderDelTable();}
   }
   if (view === 'drv') renderDriver();
+  if (view === 'gis' && !$('#gisFood')?.contains(document.activeElement)) renderGisFood();
   if (drawer && (drawer.sid || drawer.dlist)) renderDrawer(false);
   if (view === 'ana' && ++anaTick % 10 === 0) renderAna();
   if (DRIVER_MODE){daTimerTick();if (DA.map && myDriver()) daLiveUpdate(myDriver());if (++daTick % 5 === 0) daRender(true);}
@@ -2330,6 +2419,11 @@ function bind(){
     if (e.target.closest('[data-delno]')) renderDelTable();
   });
   $('#csvSchools').onclick = () => saveCsv("홍천_학교_명부_(45교).csv", '홍천 학교 명부 (45교)', ([['순번','학교명','학교급','읍면','주소','전화','위도','경도','배송코스','좌표구분'], ...SCHOOLS.map(s => [s.id, s.name, s.lv, s.emd, s.addr, s.tel, s.lat, s.lng, COURSE_OF[s.id], s.approx ? '주소 근사' : 'OSM'])]));
+  $('#hotDate').onchange = $('#hotSt').onchange = () => renderHot(true);
+  $('#hotTbl').addEventListener('change', e => {const t = e.target;if (t.dataset.hst) hotUpdate(t.dataset.hst, {status:t.value, by:UID || null, upd:Date.now()});if (t.dataset.hnote != null && t.dataset.hnote !== undefined) hotUpdate(t.dataset.hnote, {note:t.value.slice(0, 100), upd:Date.now()});});
+  $('#hotTbl').addEventListener('click', e => {const b = e.target.closest('[data-hdel]');if (!b) return;const id = b.dataset.hdel;b.outerHTML = `<span class="confirm">삭제? <button class="btn sm danger" data-hdelok="${esc(id)}">삭제</button></span>`;});
+  $('#hotTbl').addEventListener('click', e => {const b = e.target.closest('[data-hdelok]');if (b) hotDelete(b.dataset.hdelok);});
+  $('#hotCsv').onclick = () => saveCsv('하차_고온_기록.csv', '하차 중 고온 기록', [['날짜','시각','학교','코스','식사','차량','기사','도착시 온도','최고 온도','문 열림(분)','회복(분)','기준','조치','메모'], ...hotAll().map(r => [r.date, r.time, r.school, r.course, r.meal, r.veh, r.driver, r.start, r.peak, r.openMin, r.recoverMin ?? '', r.limit, r.status, r.note || ''])]);
   $('#csvDeliv').onclick = () => saveCsv("배송_내역.csv", '배송 내역', ([['배송ID','날짜','식사','학교','읍면','코스','차량','상태','출발','도착','완료','구간(분)'], ...DEL.map(d => [d.id, d.date, d.meal, SCH[d.sid].name, SCH[d.sid].emd, COURSE_OF[d.sid], d.veh || '', d.status, d.depart != null ? hhmm(d.depart) : '', d.arrive != null ? hhmm(d.arrive) : '', d.done != null ? hhmm(d.done) : '', d.leg != null ? Math.round(d.leg) : ''])]));
   document.addEventListener('keydown', e => {if (e.key === 'Escape' && drawer) closeDrawer();});
   $('#goDriver').onclick = () => {location.hash = 'driver';};
@@ -2404,7 +2498,8 @@ function bind(){
   $('#csvFood').onclick = () => saveCsv(FOOD.title + ".csv", FOOD.title + ' · ' + FOOD.center, ([FOOD.hdr.map(h => h.replace('\n', ' ')), ...FOOD.rows.map(r => r.slice(0, 7)), FOOD.foot.slice(0, 7)]));
   $('#csvAna').onclick = () => saveCsv("학교별_배송_분석.csv", '학교별 배송 분석', ([['학교','읍면','코스','평균구간(분)','최대구간(분)','30분준수율(%)','평균문열림(분)','평균ΔT(°C)','최대ΔT(°C)','평균회복(분)','기준초과횟수','표본수'], ...(window._anaRows || anaRows()).map(r => [r.s.name, r.s.emd, COURSE_OF[r.s.id], fmt1(r.leg), Math.round(r.legMax), Math.round(r.ok), fmt1(r.open), fmt1(r.dT), fmt1(r.dTmax), fmt1(r.rec), r.exc, r.n])]));
   // GIS
-  $('#courseCtl').addEventListener('click', e => {const b = e.target.closest('[data-gc]');if (b){gisCourse = b.dataset.gc;renderGis(true);}});
+  $('#courseCtl').addEventListener('click', e => {const b = e.target.closest('[data-gc]');if (b){gisCourse = b.dataset.gc;gisSchool = null;renderGis(true);}});
+  $('#v-gis').addEventListener('click', e => {const b = e.target.closest('[data-gsch]');if (b){selectGisSchool(b.dataset.gsch);}});
   $('#courseCtl').addEventListener('change', e => {const t = e.target.closest('[data-relay]');if (!t) return;relayState[t.dataset.relay] = t.checked;store.set('relay', relayState);gisCourse = t.dataset.relay;planAll();renderGis(true);toast(t.checked ? '중계거점 출발로 다시 계산했습니다.' : '물류센터 출발로 다시 계산했습니다.');});
   $('#radiusKm').onchange = () => renderGis(false);
   $('#optimize').onclick = () => {planAll();renderGis(false);const bad = Object.values(PLAN).reduce((a, p) => a + p.bad, 0);toast(`6개 코스를 다시 계산했습니다. 30분 초과 구간 ${bad}개`);};
@@ -3001,7 +3096,7 @@ function daRouteUpdate(d, fit){
     if (run){const i0 = curIdx(run);const cut = i0 < 0 ? pts.length : i0 + 1;L.polyline(pts.slice(0, cut), {color:'#94A3B8', weight:4, opacity:.9, dashArray:'2 6'}).addTo(g);L.polyline(pts.slice(Math.max(0, cut - 1)), {color:'#2DD4BF', weight:4, opacity:.95}).addTo(g);}
     else L.polyline(pts, {color:'#2DD4BF', weight:4, opacity:.9}).addTo(g);
     L.marker([start.lat, start.lng], {icon:divIcon(start.name.replace(' 통합물류센터', ''), 'hub-ico main')}).addTo(g);
-    order.forEach((sid, i) => {const st = run?.stops[i];L.marker([SCH[sid].lat, SCH[sid].lng], {icon:divIcon(i + 1, 'stop-ico' + (st?.status === '완료' ? ' ok' : ''))}).bindPopup(`<b>${esc(SCH[sid].name)}</b><br>${esc(SCH[sid].addr)}`).addTo(g);});}
+    order.forEach((sid, i) => {const st = run?.stops[i];L.marker([SCH[sid].lat, SCH[sid].lng], {icon:divIcon(i + 1, 'stop-ico' + (st?.status === '완료' ? ' ok' : ''))}).bindPopup(`<b>${i + 1}. ${esc(SCH[sid].name)}</b><br>${esc(SCH[sid].addr)}<br>식자재 ${(STD.orders[sid]?.lines || []).length}개 품목<div style="margin-top:6px"><button class="btn sm pri" data-da="sel" data-i="${i}">배송 식자재 보기</button></div>`).addTo(g);});}
   daLiveUpdate(d);
   if (fit){const b = pts.length ? L.latLngBounds(pts) : L.latLngBounds([[HUB.lat, HUB.lng]]);const mp = run ? runPos(run) : null;if (mp) b.extend([mp.lat, mp.lng]);m.fitBounds(b.pad(.15), {maxZoom:13});}
 }
