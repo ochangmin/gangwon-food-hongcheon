@@ -1033,6 +1033,11 @@ body.driver-mode{background:#EEF2F5}
       <div class="panel"><div class="ph"><h3>차량 온도 추이</h3><span class="sub">최근 60분 · 기준 범위 음영</span></div><div class="pb" id="hubSparks"></div></div>
     </div>
   </div>
+  <div class="panel" id="hcTopPanel"><div class="ph"><h3>홍천산 식재료 출고 TOP 19</h3><span class="sub" id="hcTopSub"></span>
+    <div class="r"><select class="in" id="hcSrc" aria-label="자료"><option value="ship">umji 출고 자료</option><option value="order">학교 발주 자료</option></select><select class="in" id="hcSort" aria-label="정렬"><option value="amt">출고 금액순</option><option value="sch">학교 수순</option><option value="cnt">출고 건수순</option></select><button class="btn sm" id="hcCsv">CSV</button></div></div>
+    <div class="pb kpis" id="hcKpi" style="padding-bottom:0"></div>
+    <div class="tw"><table class="t" id="hcTbl"></table></div>
+    <div class="pb small muted" id="hcNote" style="padding-top:8px"></div></div>
 </section>
 
 <!-- 차량 관제 -->
@@ -1659,7 +1664,66 @@ function renderAlerts(){
 /* ---------- 렌더: 홍천 허브 ---------- */
 let hubCourseHL = null;
 function delColor(st){return {'접수':'#B9C5CF','배차':'#B9C5CF','출발':'#0B8893','도착':'#7a4cc2','인수완료':'#1E8E4E'}[st] || '#B9C5CF';}
+
+// ── 홍천산 식재료 출고 TOP 19 ──
+const HC_TOP_N = 19;let hcTopKey = '';
+function hcOrigin(code, name){
+  const i = STD.byCode?.get(code);const o2 = i != null ? sv(i, COL.o2) : '';
+  if (o2) return o2 === '홍천군';
+  return /홍천/.test(String(name || '').replace(/홍천(센터|공장|지점|물류)/g, ''));
+}
+function hcTopData(src){
+  const m = new Map();
+  if (src === 'ship'){
+    shipAll().forEach(o => {if (!hcOrigin(o.code, o.item)) return;const k = o.code || o.item;
+      if (!m.has(k)) m.set(k, {code:o.code, name:o.item, spec:o.spec, unit:o.unit, storage:o.storage, qty:0, amt:0, cnt:0, sch:new Set(), dates:new Set()});
+      const a = m.get(k);a.qty += +o.qty || 0;a.amt += +o.tot || 0;a.cnt++;a.sch.add(o.school);if (o.date) a.dates.add(o.date);});
+  } else {
+    Object.entries(STD.orders).forEach(([sid, o]) => (o.lines || []).forEach(l => {if (!hcOrigin(l.code, l.name)) return;const k = l.code || l.name;
+      const price = +(STD.center[l.code]?.price) || 0;
+      if (!m.has(k)) m.set(k, {code:l.code, name:l.name, spec:l.spec, unit:l.ou, storage:l.storage, qty:0, amt:0, cnt:0, sch:new Set(), dates:new Set(), noPrice:!price});
+      const a = m.get(k);a.qty += +l.qty || 0;a.amt += price * (+l.qty || 0);a.cnt++;a.sch.add(SCH[sid]?.name || sid);}));
+  }
+  return [...m.values()];
+}
+function renderHcTop(force){
+  const shipN = Object.keys(SHIP.rows).length;
+  if (!hcSrcTouched) $('#hcSrc').value = Object.keys(SHIP.batches).length ? 'ship' : 'order';
+  let src = $('#hcSrc').value;
+  const ordN = Object.keys(STD.orders).length;
+  const key = [src, $('#hcSort').value, shipN, Object.keys(SHIP.batches).join(), ordN, STD.ready].join('|');
+  if (!force && key === hcTopKey) return;hcTopKey = key;
+  const all = hcTopData(src);
+  if (!hcSortTouched) $('#hcSort').value = all.some(a => a.amt) ? 'amt' : 'sch';
+  const sort = $('#hcSort').value;
+  const f = {amt:a => a.amt, sch:a => a.sch.size, cnt:a => a.cnt}[sort];
+  all.sort((a, b) => f(b) - f(a) || b.amt - a.amt || b.sch.size - a.sch.size || b.qty - a.qty);
+  const top = all.slice(0, HC_TOP_N);hcTopRows = top;
+  const dates = new Set();all.forEach(a => a.dates.forEach(d => dates.add(d)));const ds = [...dates].sort();
+  const totAmt = all.reduce((t, a) => t + a.amt, 0), sch = new Set();all.forEach(a => a.sch.forEach(x => sch.add(x)));
+  let allAmt = 0;if (src === 'ship') shipAll().forEach(o => allAmt += +o.tot || 0);
+  $('#hcTopSub').textContent = src === 'ship' ? (ds.length ? `umji 출고 · ${ds[0]}${ds.length > 1 ? ' ~ ' + ds[ds.length - 1] : ''} (${ds.length}일)` : 'umji 출고 자료가 아직 없습니다') : '학교별 발주 품목 기준 (시연 자료 포함)';
+  const won = n => Math.round(n).toLocaleString() + '원';
+  $('#hcKpi').innerHTML = [
+    ['홍천산 품목', all.length + '개', ''],
+    ['받은 학교', sch.size + '개교', ''],
+    [src === 'ship' ? '홍천산 출고 금액' : '홍천산 발주 금액', totAmt ? won(totAmt) : '-', ''],
+    src === 'ship' ? ['전체 출고 중 비중', allAmt ? (totAmt / allAmt * 100).toFixed(1) + '%' : '-', ''] : ['발주 건수', all.reduce((t, a) => t + a.cnt, 0) + '건', '']
+  ].map(([k, v]) => `<div class="kpi"><span class="l">${k}</span><b class="v">${v}</b></div>`).join('');
+  const mx = Math.max(1, ...top.map(f));
+  $('#hcTbl').innerHTML = top.length ? `<thead><tr><th class="n">순위</th><th>품목</th><th>규격</th><th>보관</th><th class="n">수량</th><th>단위</th><th class="n">${src === 'ship' ? '출고 금액' : '발주 금액'}</th><th class="n">학교 수</th><th class="n">건수</th><th style="min-width:140px">비교</th></tr></thead><tbody>` +
+    top.map((a, i) => `<tr title="${esc([...a.sch].join(', '))}"><td class="n mono"><b>${i + 1}</b></td><td style="min-width:220px">${esc(a.name || '')}</td><td class="small">${esc(a.spec || '')}</td><td>${a.storage ? `<span class="st-tag st-${esc(a.storage)}">${esc(a.storage)}</span>` : ''}</td><td class="n mono">${(+a.qty.toFixed(2)).toLocaleString()}</td><td class="small">${esc(a.unit || '')}</td><td class="n mono">${a.amt ? won(a.amt) : '-'}</td><td class="n mono">${a.sch.size}</td><td class="n mono">${a.cnt}</td><td><div style="height:8px;border-radius:4px;background:var(--sunk)"><div style="height:8px;border-radius:4px;background:var(--accent);width:${(f(a) / mx * 100).toFixed(1)}%"></div></div></td></tr>`).join('') + '</tbody>'
+    : `<tbody><tr><td class="muted small" style="padding:18px">${src === 'ship' ? 'umji 출고 자료에 홍천산 품목이 없습니다. 위에서 "학교 발주 자료"로 바꿔 보세요.' : '발주 자료에 홍천산 품목이 없습니다.'}</td></tr></tbody>`;
+  $('#hcNote').textContent = (top.length && top.length < HC_TOP_N ? `현재 자료에는 홍천산 품목이 ${top.length}개뿐입니다. 출고 자료가 날짜별로 쌓이면 19개까지 채워집니다. ` : '') +
+    '홍천산 기준: 표준식재료의 원산지2가 "홍천군"인 품목, 원산지 표기가 없으면 상품명에 홍천이 들어간 품목(○○홍천센터 같은 물류 거점 이름은 제외). 행에 마우스를 올리면 받은 학교가 보입니다.';
+}
+let hcTopRows = [], hcSrcTouched = false, hcSortTouched = false;
+function hcTopCsv(){
+  const src = $('#hcSrc').value;
+  saveCsv('홍천산_식재료_TOP19.csv', '홍천산 식재료 출고 TOP 19', [['순위', '상품코드', '품목', '규격', '보관', '수량', '단위', src === 'ship' ? '출고금액' : '발주금액', '학교수', '건수', '학교'], ...hcTopRows.map((a, i) => [i + 1, a.code, a.name, a.spec, a.storage, +a.qty.toFixed(2), a.unit, Math.round(a.amt), a.sch.size, a.cnt, [...a.sch].join(' / ')])]);
+}
 function renderHub(){
+  renderHcTop();
   const meal = $('#hubMeal').value || '중식';
   const ds = DEL.filter(d => d.date === TODAY && d.meal === meal);const by = Object.fromEntries(ds.map(d => [d.sid, d]));
   const done = ds.filter(d => d.status === '인수완료');const legs = done.map(d => d.leg).filter(x => x != null);
@@ -2454,6 +2518,7 @@ function bind(){
   $('#courseCards').addEventListener('click', e => {const c = e.target.closest('[data-course]');if (!c) return;hubCourseHL = hubCourseHL === c.dataset.course ? null : c.dataset.course;renderHub();
     if (hubCourseHL && MAPS.hub){const p = PLAN[hubCourseHL];MAPS.hub.m.fitBounds(L.latLngBounds([[p.start.lat, p.start.lng], ...p.order.map(id => [SCH[id].lat, SCH[id].lng])]).pad(.2), {maxZoom:13});}});
   $('#hubMeal').innerHTML = ['조식','중식','석식'].map(m => `<option ${m === '중식' ? 'selected' : ''}>${m}</option>`).join('');$('#hubMeal').onchange = renderHub;
+  $('#hcSrc').onchange = () => {hcSrcTouched = true;renderHcTop(true);};$('#hcSort').onchange = () => {hcSortTouched = true;renderHcTop(true);};$('#hcCsv').onclick = hcTopCsv;
   // 차량
   $('#vehRegion').innerHTML = '<option value="">전체 지역</option>' + REGIONS.map(r => `<option ${r.name === '홍천군' ? 'selected' : ''}>${r.name}</option>`).join('');
   $('#vehRegion').onchange = renderVehList;
