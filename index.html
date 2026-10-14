@@ -774,6 +774,7 @@ main{padding-block:18px 40px;padding-left:max(16px,env(safe-area-inset-left,0px)
 .sat.leaflet-container{background:#1d2a1f}
 .mapstyle{position:absolute;left:10px;top:84px;z-index:500;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.15)}
 .mapstyle button{border:0;background:#fff;padding:5px 9px;font-size:12px;cursor:pointer;color:var(--ink2)}
+.mapstyle button[data-mz]{border-top:1px solid var(--line);line-height:1.15;font-weight:600;color:var(--navy)}
 .mapstyle button[aria-pressed="true"]{background:var(--navy);color:#fff;font-weight:600}
 .attr{position:absolute;right:4px;bottom:2px;z-index:500;font-size:10px;color:#fff;text-shadow:0 0 2px #000;pointer-events:none;max-width:70%;text-align:right}
 .plain .attr{color:var(--ink3);text-shadow:none}
@@ -1622,7 +1623,7 @@ function polyStyle(layer, plain, sat){POLYS.push({layer, plain, sat});layer.setS
 const HIRES = !window.claude;
 let VWKEY = '';try{const q = new URLSearchParams(location.search).get('vworld');if (q) localStorage.setItem('vworldKey', q.trim());VWKEY = (q || localStorage.getItem('vworldKey') || window.VWORLD_KEY || '').trim();}catch(e){VWKEY = (window.VWORLD_KEY || '').trim();}
 function hiresLayers(){
-  const o = {pane:'sat', maxZoom:19, minZoom:12, keepBuffer:3, crossOrigin:true};
+  const o = {pane:'sat', maxZoom:21, minZoom:12, keepBuffer:3, crossOrigin:true};
   if (VWKEY && !VW_FAIL){
     const ls = [
       L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${VWKEY}/Satellite/{z}/{y}/{x}.jpeg`, {...o, maxNativeZoom:19}),
@@ -1645,12 +1646,16 @@ function vwFallback(){
 }
 function baseMap(id, opts = {}){
   const only = opts.sat;delete opts.sat;
-  const m = L.map(id, {zoomControl:true, attributionControl:false, zoomSnap:.25, preferCanvas:false, minZoom:7, maxZoom:HIRES ? 19 : 16, ...opts});
+  const m = L.map(id, {zoomControl:true, attributionControl:false, zoomSnap:.25, preferCanvas:false, minZoom:7, maxZoom:HIRES ? 21 : 17, ...opts});
   const pane = m.createPane('sat');pane.style.zIndex = 150;
   m._sat = (only || ['gw', 'hc']).map(k => L.imageOverlay(SAT[k].url, SAT[k].b, {pane:'sat', interactive:false}));
   if (HIRES) m._sat.push(...hiresLayers());
   const box = m.getContainer();
-  const ctl = document.createElement('div');ctl.className = 'mapstyle';ctl.innerHTML = '<button type="button" data-ms="sat">실사</button><button type="button" data-ms="plain">일반</button>';
+  const ctl = document.createElement('div');ctl.className = 'mapstyle';ctl.innerHTML = '<button type="button" data-ms="sat">실사</button><button type="button" data-ms="plain">일반</button><button type="button" data-mz="max" title="선택한 차량(없으면 지도 가운데)을 최대 확대">최대<br>확대</button><button type="button" data-mz="fit" title="처음 범위로">전체</button>';
+  ctl.addEventListener('click', e => {const b = e.target.closest('[data-mz]');if (!b) return;
+    if (b.dataset.mz === 'max'){const v = SELV ? VEH.find(x => x.id === SELV) : null;if (MAPSTYLE !== 'sat') setMapStyle('sat');m.flyTo(v ? [v.lat, v.lng] : m.getCenter(), m.getMaxZoom() - (HIRES ? 1 : 0), {duration:.8});}
+    else if (m._home) m.fitBounds(m._home);else m.setZoom(10);});
+  m.whenReady(() => setTimeout(() => {if (!m._home) m._home = m.getBounds();}, 600));
   L.DomEvent.disableClickPropagation(ctl);box.appendChild(ctl);
   const at = document.createElement('div');at.className = 'attr';at.textContent = HIRES ? (VWKEY ? '항공영상 © 국토교통부 브이월드 · 경계: 행정동' : '항공영상 © Esri, Maxar, Earthstar Geographics · 지명 © Esri · 경계: 행정동') : '위성영상: Sentinel-2 cloudless 2024 © EOX IT Services GmbH (Copernicus Sentinel data 2024 수정) · 경계: 행정동 · OSM';box.appendChild(at);
   applyMapStyle(m);
@@ -1774,6 +1779,7 @@ function syncVehMarkers(M, filter, dot){
       M.veh[v.id].on('click', () => pickVeh(v.id));}
     else {M.veh[v.id].setLatLng([v.lat, v.lng]);truckSet(M.veh[v.id], cls, v._hd);}
     M.veh[v.id].setZIndexOffset(SELV === v.id ? 2000 : 1200);
+    if (SELV === v.id && M.m.getZoom() >= 15 && !M.m.getBounds().pad(-.25).contains([v.lat, v.lng])) M.m.panTo([v.lat, v.lng], {animate:true, duration:.6}); // 확대 중 선택 차량 따라가기
   });
   syncVehPaths(M, VEH.filter(filter), dot);
 }
