@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#12283F"></head><body>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#12283F"><script>window.VWORLD_KEY="774D0198-4B79-4E02-BC57-3EBF5C32024A"</script></head><body>
 <title>강원 먹거리 이음</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1547,16 +1547,28 @@ const POLYS = []; // {layer, plain, sat}
 function polyStyle(layer, plain, sat){POLYS.push({layer, plain, sat});layer.setStyle(MAPSTYLE === 'sat' ? sat : plain);return layer;}
 // 독립 사이트(급식.shop)에서는 확대 시 고해상도 항공영상 타일을 겹쳐 씀. Claude 아티팩트는 외부 타일을 불러올 수 없어 기존 Sentinel-2 영상만 사용.
 const HIRES = !window.claude;
-let VWKEY = '';try{VWKEY = (new URLSearchParams(location.search).get('vworld') || localStorage.getItem('vworldKey') || '').trim();if (VWKEY) localStorage.setItem('vworldKey', VWKEY);}catch(e){}
+let VWKEY = '';try{const q = new URLSearchParams(location.search).get('vworld');if (q) localStorage.setItem('vworldKey', q.trim());VWKEY = (q || localStorage.getItem('vworldKey') || window.VWORLD_KEY || '').trim();}catch(e){VWKEY = (window.VWORLD_KEY || '').trim();}
 function hiresLayers(){
   const o = {pane:'sat', maxZoom:19, minZoom:12, keepBuffer:3, crossOrigin:true};
-  if (VWKEY) return [
-    L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${VWKEY}/Satellite/{z}/{y}/{x}.jpeg`, {...o, maxNativeZoom:19}),
-    L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${VWKEY}/Hybrid/{z}/{y}/{x}.png`, {...o, maxNativeZoom:19})];
+  if (VWKEY && !VW_FAIL){
+    const ls = [
+      L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${VWKEY}/Satellite/{z}/{y}/{x}.jpeg`, {...o, maxNativeZoom:19}),
+      L.tileLayer(`https://api.vworld.kr/req/wmts/1.0.0/${VWKEY}/Hybrid/{z}/{y}/{x}.png`, {...o, maxNativeZoom:19})];
+    // 브이월드 키가 이 도메인에서 거절되면(타일 오류만 연속) Esri 영상으로 자동 전환
+    let ok = 0, bad = 0;ls[0].on('tileload', () => ok++).on('tileerror', () => {if (++bad >= 6 && !ok && !VW_FAIL){VW_FAIL = true;vwFallback();}});
+    return ls;
+  }
   return [
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {...o, maxNativeZoom:19}),
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {...o, maxNativeZoom:19}),
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', {...o, maxNativeZoom:19, opacity:.55})];
+}
+let VW_FAIL = false;
+function vwFallback(){
+  [...Object.values(MAPS).map(M => M.m), DA?.map].forEach(m => {if (!m?._sat) return;const on = MAPSTYLE === 'sat';
+    m._sat.filter(l => l instanceof L.TileLayer).forEach(l => m.removeLayer(l));
+    m._sat = m._sat.filter(l => !(l instanceof L.TileLayer)).concat(hiresLayers());if (on) m._sat.forEach(l => l.addTo(m));
+    const at = m.getContainer().querySelector('.attr');if (at) at.textContent = '항공영상 © Esri, Maxar, Earthstar Geographics · 지명 © Esri · 경계: 행정동';});
 }
 function baseMap(id, opts = {}){
   const only = opts.sat;delete opts.sat;
