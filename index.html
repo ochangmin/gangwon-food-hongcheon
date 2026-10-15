@@ -2641,6 +2641,38 @@ const BT_MI = 'ebe0ccb0-7a0a-4b0c-8a1a-6ff2997da3a6', BT_MI_DATA = 'ebe0ccc1-7a0
 const IN_APP = /GwFoodDriver/.test(navigator.userAgent) && !!window.AndroidBLE;
 if (IN_APP) document.documentElement.classList.add('in-app');
 const APK_URL = 'https://github.com/ochangmin/gangwon-food-hongcheon/releases/download/android-latest/gwfood-driver.apk';
+// ── 앱 전용: 운행 중 GPS 자동 보고 · 화면 켜짐 유지 · 새 버전 알림 ──
+const APP = {watch:null, last:null, sent:0, screen:null, latest:null, gpsOn:true};
+try{APP.gpsOn = localStorage.getItem('gfl:gps') !== '0';}catch(e){}
+function appTick(){
+  if (!IN_APP) return;const d = myDriver();const run = d && !DA.demo ? myRun(d) : (d && DA.demo ? myRun(d) : null);const active = !!(run && curIdx(run) >= 0);
+  if (APP.screen !== active){APP.screen = active;try{window.AndroidBLE.keepScreenOn(active);}catch(e){}}
+  if (active && APP.gpsOn && !APP.watch && navigator.geolocation){
+    APP.watch = navigator.geolocation.watchPosition(p => {
+      const ll = {lat:p.coords.latitude, lng:p.coords.longitude};APP.fix = {ll, acc:p.coords.accuracy, at:Date.now()};
+      const moved = APP.last ? hav(APP.last, ll) : 1;
+      if (Date.now() - APP.sent > 30000 || moved > .1){APP.sent = Date.now();APP.last = ll;appSendPos(ll, p.coords.accuracy);}
+    }, err => {APP.gpsErr = err.message;}, {enableHighAccuracy:true, maximumAge:10000, timeout:30000});
+  }
+  if ((!active || !APP.gpsOn) && APP.watch != null){navigator.geolocation.clearWatch(APP.watch);APP.watch = null;}
+}
+function appSendPos(ll, acc){
+  const d = myDriver();const run = myRun(d);if (!run) return;
+  const near = SCHOOLS.map(s => ({s, k:hav(ll, s)})).sort((a, b) => a.k - b.k)[0];
+  const r = JSON.parse(JSON.stringify(run));delete r._local;r.pos = {lat:+ll.lat.toFixed(5), lng:+ll.lng.toFixed(5), at:Date.now(), acc:Math.round(acc || 0), label:`${near.s.name} 근처 ${fmt1(near.k)}km (GPS)`};
+  runSave(r);
+}
+async function appCheckUpdate(){
+  if (!IN_APP) return;
+  try{const r = await fetch('https://api.github.com/repos/ochangmin/gangwon-food-hongcheon/releases/tags/android-latest');const j = await r.json();
+    const m = String(j.body || '').match(/빌드 번호 (\d+)/);APP.latest = m ? +m[1] : null;APP.mine = window.AndroidBLE.versionCode();
+    if (APP.latest && APP.mine && APP.latest > APP.mine) daRender(true);}catch(e){}
+}
+function appUpdateBanner(){
+  if (!IN_APP || !APP.latest || !APP.mine || APP.latest <= APP.mine) return '';
+  return `<div class="da-card warn"><b>새 버전 기사 앱이 있습니다</b><span class="small">지금 ${APP.mine} → 새 버전 ${APP.latest}. 내려받아 설치해 주세요.</span><button class="btn pri" data-da="appupd">새 버전 내려받기</button></div>`;
+}
+if (IN_APP){setInterval(appTick, 5000);setTimeout(appCheckUpdate, 4000);setInterval(appCheckUpdate, 6 * 3600e3);}
 window.__ble = raw => {
   let e;try{e = JSON.parse(raw);}catch(x){return;}
   const d = myDriver();const v = d && VID(d.veh);if (!v) return;const I = iotOf(v);
@@ -3779,10 +3811,11 @@ async function daFillMe(){if (!USER) return;try{const me = await USER.me();const
 
 function daStops(d){const c = COURSES.find(x => x.id === d.course);return c ? PLAN[c.id].order : [];}
 function daToday(d){
+  const upd = appUpdateBanner();
   const run = myRun(d);const order = daStops(d);const v = VID(d.veh);
   if (!d.course) return `<div class="da-card warn"><b>배정된 코스가 없습니다.</b><p class="small">센터에서 코스를 배정하면 여기에 표시됩니다.</p></div>`;
   const c = COURSES.find(x => x.id === d.course);const p = PLAN[c.id];
-  let h = `<div class="da-hero"><span class="small">${TODAY} · ${new Date().toLocaleDateString('ko-KR', {weekday:'long'})}</span><h2>${esc(d.name || d.id)} 기사님</h2><p>코스 ${c.id} · ${c.name} · ${order.length}개교 · 예상 ${Math.round(p.total)}분 · ${fmt1(p.km)}km</p></div>`;
+  let h = upd + `<div class="da-hero"><span class="small">${TODAY} · ${new Date().toLocaleDateString('ko-KR', {weekday:'long'})}</span><h2>${esc(d.name || d.id)} 기사님</h2><p>코스 ${c.id} · ${c.name} · ${order.length}개교 · 예상 ${Math.round(p.total)}분 · ${fmt1(p.km)}km</p></div>`;
   if (!run){
     const frozen = order.reduce((a, sid) => a + (STD.orders[sid]?.lines || []).filter(l => l.storage === '냉동').length, 0);
     h += `<div class="da-card now"><span class="ey">출발 전</span><h4>${c.name} 코스</h4>
@@ -3865,7 +3898,11 @@ function daMe(d){
   return `<div class="da-card"><div class="row"><img id="daAv" class="da-av" alt=""><div><b id="daName">${esc(d.name || d.id)}</b><div class="small muted">${DA.demo ? '시연 모드 · 저장 안 됨' : sessDriver() ? '아이디 ' + esc(loginIdOf(d)) + '로 로그인됨' : 'Claude 계정으로 로그인됨'}</div></div></div></div>
     <div class="da-card"><div class="std-kv">${[['기사 ID', d.id], ['이름', d.name], ['차량', d.veh], ['코스', d.course ? d.course + ' · ' + (COURSES.find(c => c.id === d.course)?.name || '') : '-'], ['오늘 운행', run ? (curIdx(run) < 0 ? '종료' : '진행 중') : '시작 전'], ['센터', '홍천 통합물류센터']].map(([k, x]) => `<div><span>${k}</span><b>${esc(x || '-')}</b></div>`).join('')}</div></div>
     ${run && !DA.demo ? '' : run ? '<button class="btn" data-da="reset">시연 운행 초기화</button>' : ''}
-    ${IN_APP ? `<div class="da-card"><b>글씨 크기</b><div class="da-zoom"><button class="btn" data-da="zoom-">가−</button><span class="mono" style="font-size:18px;font-weight:700;min-width:64px;text-align:center" id="daZoomV">${(() => {try{return window.AndroidBLE.getTextZoom();}catch(e){return 130;}})()}%</span><button class="btn" data-da="zoom+">가+</button></div><span class="small muted">앱 전체 글씨 크기를 바꿉니다 (100~200%)</span></div>` : ''}
+    ${IN_APP ? `<div class="da-card"><b>글씨 크기</b><div class="da-zoom"><button class="btn" data-da="zoom-">가−</button><span class="mono" style="font-size:18px;font-weight:700;min-width:64px;text-align:center" id="daZoomV">${(() => {try{return window.AndroidBLE.getTextZoom();}catch(e){return 130;}})()}%</span><button class="btn" data-da="zoom+">가+</button></div><span class="small muted">앱 전체 글씨 크기를 바꿉니다 (100~200%)</span></div>
+    <div class="da-card"><b>운행 중 위치 자동 보고</b><span class="small">운행을 시작하면 휴대폰 GPS 위치를 30초마다(또는 100m 이동 시) 관제로 보냅니다. 운행 중에는 화면이 꺼지지 않습니다.</span>
+      <div class="row" style="justify-content:space-between"><span class="pill ${APP.gpsOn ? 'ok' : ''}">${APP.gpsOn ? '켜짐' : '꺼짐'}</span><button class="btn sm" data-da="gpstoggle">${APP.gpsOn ? '끄기' : '켜기'}</button></div>
+      ${APP.fix ? `<span class="small muted">최근 GPS ${APP.fix.ll.lat.toFixed(5)}, ${APP.fix.ll.lng.toFixed(5)} · 오차 ${Math.round(APP.fix.acc)}m · ${new Date(APP.fix.at).toLocaleTimeString('ko-KR')}</span>` : APP.gpsErr ? `<span class="small crit-t">GPS 오류: ${esc(APP.gpsErr)}</span>` : ''}</div>
+    <div class="da-card"><b>앱 정보</b><span class="small">버전 ${(() => {try{return window.AndroidBLE.version() + ' (빌드 ' + window.AndroidBLE.versionCode() + ')';}catch(e){return '-';}})()}${APP.latest ? ' · 최신 빌드 ' + APP.latest : ''}</span><div class="row"><button class="btn sm" data-da="appreload">화면 새로고침</button><button class="btn sm" data-da="appupd">최신 앱 내려받기</button></div></div>` : ''}
     <button class="bigbtn" style="background:var(--crit)" data-da="logout">${DA.demo ? '시연 종료' : '로그아웃'}</button>`;
 }
 
@@ -3877,6 +3914,9 @@ async function daAction(a, el){
   if (a === 'focus'){if (DA.map){DA.map.setView([+el.dataset.lat, +el.dataset.lng], 14);window.scrollTo(0, 0);}return;}
   if (a === 'pickpos'){DA.picking = !DA.picking;toast(DA.picking ? '지도에서 현재 위치를 눌러 주세요.' : '위치 보고를 취소했습니다.');const b = el;b.textContent = DA.picking ? '지도를 눌러 위치를 찍으세요 (취소)' : '지도에서 현재 위치 보고';return;}
   const d = myDriver();
+  if (a === 'appupd'){try{window.AndroidBLE.openUrl(APK_URL);}catch(e){location.href = APK_URL;}return;}
+  if (a === 'appreload'){try{window.AndroidBLE.reload();}catch(e){location.reload();}return;}
+  if (a === 'gpstoggle'){APP.gpsOn = !APP.gpsOn;try{localStorage.setItem('gfl:gps', APP.gpsOn ? '1' : '0');}catch(e){}appTick();toast(APP.gpsOn ? '운행 중 GPS 자동 보고를 켰습니다.' : 'GPS 자동 보고를 껐습니다.');return daRender(true);}
   if (a === 'zoom-' || a === 'zoom+'){try{const z = window.AndroidBLE.getTextZoom() + (a === 'zoom+' ? 10 : -10);window.AndroidBLE.setTextZoom(z);const el = $('#daZoomV');if (el) el.textContent = Math.max(100, Math.min(200, z)) + '%';}catch(e){}return;}
   if (a === 'btscan'){const d = myDriver();if (d && VID(d.veh)) btConnect(VID(d.veh));return;}
   if (a === 'btoff'){btDisconnect(el.dataset.id);return daRender(true);}

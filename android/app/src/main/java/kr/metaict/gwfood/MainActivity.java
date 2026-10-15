@@ -27,7 +27,19 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.ParcelUuid;
+import android.view.Gravity;
+import android.view.View;
+import android.view.WindowManager;
+import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.TextView;
+import android.widget.Toast;
 import android.webkit.GeolocationPermissions;
+import android.webkit.ValueCallback;
+import android.webkit.WebResourceError;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -52,7 +64,7 @@ import java.util.UUID;
 public class MainActivity extends Activity {
     static final String HOME = "https://www.xn--kj0b080b.shop/?app=android#driver";
     static final String HOST = "www.xn--kj0b080b.shop";
-    static final int REQ_LOC = 11, REQ_BT = 12;
+    static final int REQ_LOC = 11, REQ_BT = 12, REQ_FILE = 13;
 
     static final UUID ESS = uuid16(0x181A), TEMP = uuid16(0x2A6E), HUM = uuid16(0x2A6F);
     static final UUID BAT_S = uuid16(0x180F), BAT_C = uuid16(0x2A19);
@@ -61,6 +73,9 @@ public class MainActivity extends Activity {
     static final UUID MI_C = UUID.fromString("ebe0ccc1-7a0a-4b0c-8a1a-6ff2997da3a6");
 
     WebView web;
+    FrameLayout root; View splash, offline; ProgressBar bar;
+    ValueCallback<Uri[]> fileCb;
+    long backAt = 0;
     final Handler ui = new Handler(Looper.getMainLooper());
     GeolocationPermissions.Callback geoCb; String geoOrigin;
     BluetoothAdapter bt; BluetoothLeScanner scanner; boolean scanning;
@@ -75,14 +90,32 @@ public class MainActivity extends Activity {
         super.onCreate(b);
         web = new WebView(this);
         web.setBackgroundColor(Color.WHITE);
-        setContentView(web);
+        root = new FrameLayout(this);
+        root.addView(web, new FrameLayout.LayoutParams(-1, -1));
+        // 상단 로딩 막대
+        bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(100);bar.setVisibility(View.GONE);
+        root.addView(bar, new FrameLayout.LayoutParams(-1, dp(4), Gravity.TOP));
+        // 시작 화면
+        LinearLayout sp = new LinearLayout(this);sp.setOrientation(LinearLayout.VERTICAL);sp.setGravity(Gravity.CENTER);sp.setBackgroundColor(Color.parseColor("#12283F"));
+        ImageView ic = new ImageView(this);ic.setImageResource(R.mipmap.ic_launcher);sp.addView(ic, new LinearLayout.LayoutParams(dp(96), dp(96)));
+        TextView t1 = new TextView(this);t1.setText("먹거리 이음 기사");t1.setTextColor(Color.WHITE);t1.setTextSize(24);t1.setPadding(0, dp(16), 0, dp(4));t1.setGravity(Gravity.CENTER);sp.addView(t1);
+        TextView t2 = new TextView(this);t2.setText("홍천 학교급식 배송");t2.setTextColor(Color.parseColor("#BFD0DC"));t2.setTextSize(16);t2.setGravity(Gravity.CENTER);sp.addView(t2);
+        splash = sp;root.addView(sp, new FrameLayout.LayoutParams(-1, -1));
+        // 인터넷 끊김 화면
+        LinearLayout off = new LinearLayout(this);off.setOrientation(LinearLayout.VERTICAL);off.setGravity(Gravity.CENTER);off.setBackgroundColor(Color.WHITE);off.setPadding(dp(32), 0, dp(32), 0);
+        TextView o1 = new TextView(this);o1.setText("인터넷에 연결할 수 없습니다");o1.setTextSize(22);o1.setTextColor(Color.parseColor("#12283F"));o1.setGravity(Gravity.CENTER);off.addView(o1);
+        TextView o2 = new TextView(this);o2.setText("데이터 또는 와이파이 연결을 확인한 뒤 다시 시도하세요.");o2.setTextSize(16);o2.setTextColor(Color.parseColor("#33404C"));o2.setGravity(Gravity.CENTER);o2.setPadding(0, dp(10), 0, dp(20));off.addView(o2);
+        Button rb = new Button(this);rb.setText("다시 시도");rb.setTextSize(18);rb.setOnClickListener(v -> {offline.setVisibility(View.GONE);web.reload();});off.addView(rb);
+        off.setVisibility(View.GONE);offline = off;root.addView(off, new FrameLayout.LayoutParams(-1, -1));
+        setContentView(root);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setDatabaseEnabled(true);
         s.setGeolocationEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(true);
-        s.setUserAgentString(s.getUserAgentString() + " GwFoodDriver/1.1");
+        s.setUserAgentString(s.getUserAgentString() + " GwFoodDriver/1.2");
         // 글씨 크기: 기본 130%, 기사 화면 '내 정보'에서 조절한 값이 있으면 그 값
         s.setTextZoom(getSharedPreferences("gw", MODE_PRIVATE).getInt("zoom", 130));
         s.setUseWideViewPort(true);
@@ -90,6 +123,10 @@ public class MainActivity extends Activity {
         s.setSupportZoom(false);
         web.addJavascriptInterface(new Bridge(), "AndroidBLE");
         web.setWebViewClient(new WebViewClient(){
+            @Override public void onPageFinished(WebView v, String url){if (splash.getVisibility() == View.VISIBLE) ui.postDelayed(() -> splash.setVisibility(View.GONE), 400);}
+            @Override public void onReceivedError(WebView v, WebResourceRequest r, WebResourceError e){
+                if (r.isForMainFrame()){offline.setVisibility(View.VISIBLE);splash.setVisibility(View.GONE);}
+            }
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r){
                 Uri u = r.getUrl();
                 if (HOST.equals(u.getHost())) return false;
@@ -99,6 +136,13 @@ public class MainActivity extends Activity {
             }
         });
         web.setWebChromeClient(new WebChromeClient(){
+            @Override public void onProgressChanged(WebView v, int p){bar.setProgress(p);bar.setVisibility(p < 100 ? View.VISIBLE : View.GONE);}
+            // 검수 사진 등 파일 첨부
+            @Override public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> cb, FileChooserParams params){
+                if (fileCb != null) fileCb.onReceiveValue(null);fileCb = cb;
+                try{startActivityForResult(params.createIntent(), REQ_FILE);}catch(Exception e){fileCb = null;return false;}
+                return true;
+            }
             @Override public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback cb){
                 if (hasLoc()){cb.invoke(origin, true, false);return;}
                 geoCb = cb;geoOrigin = origin;
@@ -109,7 +153,17 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onSaveInstanceState(Bundle o){super.onSaveInstanceState(o);web.saveState(o);}
-    @Override public void onBackPressed(){if (web.canGoBack()) web.goBack(); else super.onBackPressed();}
+    @Override public void onBackPressed(){
+        if (web.canGoBack()){web.goBack();return;}
+        long now = System.currentTimeMillis();
+        if (now - backAt < 2000){super.onBackPressed();return;}
+        backAt = now;Toast.makeText(this, "한 번 더 누르면 앱을 닫습니다", Toast.LENGTH_SHORT).show();
+    }
+    @Override protected void onActivityResult(int req, int res, Intent data){
+        super.onActivityResult(req, res, data);
+        if (req == REQ_FILE && fileCb != null){fileCb.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(res, data));fileCb = null;}
+    }
+    int dp(int v){return Math.round(v * getResources().getDisplayMetrics().density);}
     @Override protected void onDestroy(){
         for (BluetoothGatt g : gatts.values()) try{g.close();}catch(SecurityException e){}
         super.onDestroy();
@@ -137,7 +191,12 @@ public class MainActivity extends Activity {
         }
         @JavascriptInterface public void pick(){ui.post(MainActivity.this::beginPick);}
         @JavascriptInterface public void disconnect(String id){ui.post(() -> {BluetoothGatt g = gatts.remove(id);if (g != null) try{g.disconnect();g.close();}catch(SecurityException e){}});}
-        @JavascriptInterface public String version(){return "1.1";}
+        @JavascriptInterface public String version(){return "1.2";}
+        @JavascriptInterface public int versionCode(){try{android.content.pm.PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);return Build.VERSION.SDK_INT >= 28 ? (int) pi.getLongVersionCode() : pi.versionCode;}catch(Exception e){return 0;}}
+        // 운행 중에는 화면이 꺼지지 않게
+        @JavascriptInterface public void keepScreenOn(boolean on){ui.post(() -> {if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);});}
+        @JavascriptInterface public void openUrl(String url){ui.post(() -> {try{startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));}catch(Exception e){}});}
+        @JavascriptInterface public void reload(){ui.post(() -> web.reload());}
         @JavascriptInterface public int getTextZoom(){return web.getSettings().getTextZoom();}
         @JavascriptInterface public void setTextZoom(int z){
             final int v = Math.max(100, Math.min(200, z));
