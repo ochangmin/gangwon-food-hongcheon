@@ -979,6 +979,11 @@ table.xls tbody tr[data-food]:hover td{background:#F4FAF9}
 .food-in table.t td,.food-in table.t th{padding:5px 8px}
 body.driver-mode{background:#EEF2F5}
 #drvApp{min-height:100vh;display:flex;flex-direction:column;max-width:560px;margin:0 auto;background:#F3F6FB}
+.in-app{--ink2:#33404C;--ink3:#56636F}
+.in-app .da-nav button{font-size:12.5px;padding:10px 0 12px}.in-app .da-nav button i{font-size:15px}
+.in-app .da-card{padding:16px}.in-app .da-hero p,.in-app .small{color:var(--ink2)}
+.in-app .btn{min-height:40px}.in-app .btn.sm{min-height:34px}
+.da-zoom{display:flex;align-items:center;gap:8px}.da-zoom button{min-width:52px;font-size:16px;font-weight:700}
 .da-top{position:sticky;top:env(safe-area-inset-top,0px);z-index:1100;background:var(--navy);color:#fff;display:flex;align-items:center;gap:10px;padding-block:12px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .da-brand{display:flex;flex-direction:column;min-width:0}.da-brand b{font-size:16px}.da-brand span{font-size:12px;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .da-ico{margin-left:auto;border:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;border-radius:8px;padding:5px 10px;font-size:12.5px;cursor:pointer}
@@ -2624,6 +2629,7 @@ const BT_ESS = 0x181a, BT_TEMP = 0x2a6e, BT_HUM = 0x2a6f;
 const BT_MI = 'ebe0ccb0-7a0a-4b0c-8a1a-6ff2997da3a6', BT_MI_DATA = 'ebe0ccc1-7a0a-4b0c-8a1a-6ff2997da3a6';
 // 안드로이드 기사 앱: 앱이 블루투스 검색·연결을 맡고 측정값을 window.__ble 로 넘겨준다
 const IN_APP = /GwFoodDriver/.test(navigator.userAgent) && !!window.AndroidBLE;
+if (IN_APP) document.documentElement.classList.add('in-app');
 const APK_URL = 'https://github.com/ochangmin/gangwon-food-hongcheon/releases/download/android-latest/gwfood-driver.apk';
 window.__ble = raw => {
   let e;try{e = JSON.parse(raw);}catch(x){return;}
@@ -3849,6 +3855,7 @@ function daMe(d){
   return `<div class="da-card"><div class="row"><img id="daAv" class="da-av" alt=""><div><b id="daName">${esc(d.name || d.id)}</b><div class="small muted">${DA.demo ? '시연 모드 · 저장 안 됨' : sessDriver() ? '아이디 ' + esc(loginIdOf(d)) + '로 로그인됨' : 'Claude 계정으로 로그인됨'}</div></div></div></div>
     <div class="da-card"><div class="std-kv">${[['기사 ID', d.id], ['이름', d.name], ['차량', d.veh], ['코스', d.course ? d.course + ' · ' + (COURSES.find(c => c.id === d.course)?.name || '') : '-'], ['오늘 운행', run ? (curIdx(run) < 0 ? '종료' : '진행 중') : '시작 전'], ['센터', '홍천 통합물류센터']].map(([k, x]) => `<div><span>${k}</span><b>${esc(x || '-')}</b></div>`).join('')}</div></div>
     ${run && !DA.demo ? '' : run ? '<button class="btn" data-da="reset">시연 운행 초기화</button>' : ''}
+    ${IN_APP ? `<div class="da-card"><b>글씨 크기</b><div class="da-zoom"><button class="btn" data-da="zoom-">가−</button><span class="mono" style="font-size:18px;font-weight:700;min-width:64px;text-align:center" id="daZoomV">${(() => {try{return window.AndroidBLE.getTextZoom();}catch(e){return 130;}})()}%</span><button class="btn" data-da="zoom+">가+</button></div><span class="small muted">앱 전체 글씨 크기를 바꿉니다 (100~200%)</span></div>` : ''}
     <button class="bigbtn" style="background:var(--crit)" data-da="logout">${DA.demo ? '시연 종료' : '로그아웃'}</button>`;
 }
 
@@ -3860,6 +3867,7 @@ async function daAction(a, el){
   if (a === 'focus'){if (DA.map){DA.map.setView([+el.dataset.lat, +el.dataset.lng], 14);window.scrollTo(0, 0);}return;}
   if (a === 'pickpos'){DA.picking = !DA.picking;toast(DA.picking ? '지도에서 현재 위치를 눌러 주세요.' : '위치 보고를 취소했습니다.');const b = el;b.textContent = DA.picking ? '지도를 눌러 위치를 찍으세요 (취소)' : '지도에서 현재 위치 보고';return;}
   const d = myDriver();
+  if (a === 'zoom-' || a === 'zoom+'){try{const z = window.AndroidBLE.getTextZoom() + (a === 'zoom+' ? 10 : -10);window.AndroidBLE.setTextZoom(z);const el = $('#daZoomV');if (el) el.textContent = Math.max(100, Math.min(200, z)) + '%';}catch(e){}return;}
   if (a === 'btscan'){const d = myDriver();if (d && VID(d.veh)) btConnect(VID(d.veh));return;}
   if (a === 'btoff'){btDisconnect(el.dataset.id);return daRender(true);}
   if (a === 'demo'){DA.demo = el.dataset.id;DA.out = false;DA.page = 'today';DA.sel = null;return daRender();}

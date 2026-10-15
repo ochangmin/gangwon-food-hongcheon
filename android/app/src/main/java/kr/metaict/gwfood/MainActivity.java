@@ -82,7 +82,12 @@ public class MainActivity extends Activity {
         s.setDatabaseEnabled(true);
         s.setGeolocationEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(true);
-        s.setUserAgentString(s.getUserAgentString() + " GwFoodDriver/1.0");
+        s.setUserAgentString(s.getUserAgentString() + " GwFoodDriver/1.1");
+        // 글씨 크기: 기본 130%, 기사 화면 '내 정보'에서 조절한 값이 있으면 그 값
+        s.setTextZoom(getSharedPreferences("gw", MODE_PRIVATE).getInt("zoom", 130));
+        s.setUseWideViewPort(true);
+        s.setLoadWithOverviewMode(false);
+        s.setSupportZoom(false);
         web.addJavascriptInterface(new Bridge(), "AndroidBLE");
         web.setWebViewClient(new WebViewClient(){
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r){
@@ -132,7 +137,13 @@ public class MainActivity extends Activity {
         }
         @JavascriptInterface public void pick(){ui.post(MainActivity.this::beginPick);}
         @JavascriptInterface public void disconnect(String id){ui.post(() -> {BluetoothGatt g = gatts.remove(id);if (g != null) try{g.disconnect();g.close();}catch(SecurityException e){}});}
-        @JavascriptInterface public String version(){return "1.0";}
+        @JavascriptInterface public String version(){return "1.1";}
+        @JavascriptInterface public int getTextZoom(){return web.getSettings().getTextZoom();}
+        @JavascriptInterface public void setTextZoom(int z){
+            final int v = Math.max(100, Math.min(200, z));
+            getSharedPreferences("gw", MODE_PRIVATE).edit().putInt("zoom", v).apply();
+            ui.post(() -> web.getSettings().setTextZoom(v));
+        }
     }
 
     void beginPick(){
