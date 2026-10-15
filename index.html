@@ -1304,7 +1304,7 @@ POST /api/deliveries/{배송ID}/events
 </section>
 </main>
 <div class="sup-doc" id="rtModal" hidden></div>
-<footer class="org-foot" id="orgFoot"><div class="of-l"><img class="org-logo" data-org-logo alt="" hidden><span id="orgName">강원 먹거리 이음 · 홍천 학교급식 스마트 물류 시연</span></div><div class="of-r"><img class="org-logo" data-org-logo alt="" hidden></div></footer>
+<footer class="org-foot" id="orgFoot"><div class="of-l"><img class="org-logo" data-org-logo alt="" hidden><span style="display:flex;flex-direction:column;gap:2px"><span id="orgName">강원 먹거리 이음 · 홍천 학교급식 스마트 물류 시연</span><span id="orgAddr" class="small muted" style="font-weight:400" hidden></span></span></div><div class="of-r"><img class="org-logo" data-org-logo alt="" hidden></div></footer>
 <div class="toast" id="toast" role="status"></div>
 <div id="modalRoot"></div>
 <div id="drawerRoot"></div>
@@ -1379,6 +1379,7 @@ const relayState = store.get('relay', Object.fromEntries(COURSES.map(c => [c.id,
 (async () => {
   let o = {};try{const r = await fetch('data/org.json', {cache:'no-store'});if (r.ok) o = await r.json();}catch(e){}
   if (o.name){const n = document.getElementById('orgName');if (n) n.textContent = o.name;}
+  if (o.addr){const a = document.getElementById('orgAddr');if (a){a.textContent = o.addr;a.hidden = false;}}
   const src = o.logo || 'img/org-logo.png';
   document.querySelectorAll('[data-org-logo]').forEach(img => {img.onload = () => {img.hidden = false;};img.onerror = () => img.remove();img.alt = o.name || '';img.src = src;});
 })();
