@@ -1032,7 +1032,7 @@ body.driver-mode{background:#EEF2F5}
       <label class="switch small" title="배송 회차·센서 이벤트·기사 운행 기록을 계속 만들어 냅니다"><input type="checkbox" id="autoGen" checked>자동 생성</label>
       <span class="pill" id="genState" hidden></span>
       <select class="in" id="simRate" aria-label="시뮬레이션 속도">
-        <option value="0.5">0.5분/초</option><option value="1" selected>1분/초</option><option value="2">2분/초</option><option value="5">5분/초</option>
+        <option value="0.1">6초/초</option><option value="0.25" selected>15초/초</option><option value="0.5">30초/초</option><option value="1">1분/초</option><option value="2">2분/초</option><option value="5">5분/초</option>
       </select>
     </div>
   </div>
@@ -4258,11 +4258,18 @@ async function genStep(){
 /* ---------- 시작 ---------- */
 boot();bind();loadStd();initDb();
 let last = performance.now();
+// 시뮬레이션은 0.25초마다 조금씩 진행(차량이 끊기지 않고 움직이도록), 화면 전체 갱신은 1초마다
+let subTick = 0;
 setInterval(() => {
-  if (running){const rate = +$('#simRate').value;tick(rate);autoLocal(rate);store.set('sim', SIM);}
-  if (AUTO && running){genLease();genStep();}
-  refresh();
-}, 1000);
+  if (running){const rate = +$('#simRate').value;tick(rate / 4);if (++subTick % 4 === 0){autoLocal(rate);store.set('sim', SIM);}}
+  if (subTick % 4 === 0){if (AUTO && running){genLease();genStep();}refresh();}
+  else if (running) vehMoveOnly();
+}, 250);
+function vehMoveOnly(){
+  if (view === 'hub' && MAPS.hub) VEH.forEach(v => {const m = MAPS.hub.veh?.[v.id];if (m){m.setLatLng([v.lat, v.lng]);truckSet(m, vState(v) + (SELV === v.id ? ' pick' : SELV ? ' dim' : ''), v._hd);}});
+  if (view === 'wide' && MAPS.wide) VEH.forEach(v => {const m = MAPS.wide.veh?.[v.id];if (m){m.setLatLng([v.lat, v.lng]);truckSet(m, vState(v) + ' sm' + (SELV === v.id ? ' pick' : SELV ? ' dim' : ''), v._hd);}});
+  if (view === 'drv' && MAPS.drv?.mk){const v = drvVehicle();if (v){MAPS.drv.mk.setLatLng([v.lat, v.lng]);truckSet(MAPS.drv.mk, vState(v), v._hd);}}
+}
 try{DA.out = sessionStorage.getItem('gfl:out') === '1';DA.loginMode = sessionStorage.getItem('gfl:mode');}catch(e){}
 window.addEventListener('hashchange', () => {const h = location.hash.slice(1);if (h === 'driver') enterDriver(true);else if (DRIVER_MODE){enterDriver(false);if (['wide','hub','veh','del','gis','std','ship','ana','drv','acct','cfg'].includes(h)) show(h);}});
 const startView = (location.hash || '').slice(1);
