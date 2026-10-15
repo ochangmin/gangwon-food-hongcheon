@@ -786,6 +786,13 @@ main{padding-block:18px 40px;padding-left:max(16px,env(safe-area-inset-left,0px)
 .iot-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 #iot-tbl tr.sel td{background:var(--accent-soft)}
 @media (max-width:900px){.iot-ctl{grid-template-columns:1fr}.iot-grid{grid-template-columns:1fr 1fr}}
+.flow{display:flex;align-items:stretch;gap:6px;flex-wrap:wrap}
+.flow-c{flex:1;min-width:170px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--panel);display:flex;flex-direction:column;gap:3px;position:relative}
+.flow-c b{color:var(--navy);font-size:14px}.flow-v{font:800 24px/1.1 var(--f-mono);color:var(--navy)}.flow-v small{font-size:13px;color:var(--ink3);font-weight:600}
+.flow-n{position:absolute;right:12px;top:10px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;background:var(--sunk);color:var(--ink2)}
+.flow-c.part{border-color:#9FD4D9}.flow-c.done{border-color:#9ED9C0;background:#F1FBF6}.flow-c.done .flow-n{background:var(--ok);color:#fff}.flow-c.part .flow-n{background:var(--accent);color:#fff}
+.flow-ar{align-self:center;color:var(--ink3);font-weight:800}
+tr.sup-sub>td{background:var(--sunk);padding:6px 10px}tr.sup-sub .t{background:#fff}
 .sup-list{display:flex;flex-direction:column;max-height:640px;overflow:auto}
 .sup-li{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:3px;padding:10px 14px;border-bottom:1px solid var(--line)}
 .sup-li:hover{background:var(--sunk)}.sup-li.on{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
@@ -1038,7 +1045,7 @@ body.driver-mode{background:#EEF2F5}
     <button role="tab" data-v="std">표준 식자재</button>
     <button role="tab" data-v="ana">배송 분석</button>
     <button role="tab" data-v="drv">운행 시연</button>
-    <button role="tab" data-v="sup">공급업체 출고</button>
+    <button role="tab" data-v="sup">입·출고 관리</button>
     <button role="tab" data-v="ship">출고 데이터</button>
     <button role="tab" data-v="acct">기사 계정</button>
     <button role="tab" data-v="cfg">IoT 설정</button>
@@ -1213,11 +1220,12 @@ body.driver-mode{background:#EEF2F5}
 
 <!-- 출고 데이터 -->
 <section class="view" id="v-sup" hidden>
-  <div class="vhead"><div><h2>공급업체 출고처리</h2><p>학교 발주를 공급업체별로 묶어 보여 줍니다. 공급업체는 품목별 출고수량·결품 사유를 입력하고 출고를 확정하며, 센터는 입고(검수)를 확인합니다. 거래명세서와 학교별 분류표를 바로 출력할 수 있습니다.</p></div>
+  <div class="vhead"><div><h2>입·출고 관리</h2><p><b>공급업체 출고 → 센터 입고(검수) → 센터 출고(학교별 상차) → 학교 인수</b> 순서로 처리합니다. 공급업체는 출고수량·결품 사유를 입력해 출고를 확정하고, 센터는 입고수량·불량을 검수한 뒤 그 수량을 코스 순서대로 학교에 배정해 상차합니다. 학교 인수는 기사 앱 배송 기록과 연결됩니다.</p></div>
     <div class="act"><select class="in" id="supMode" aria-label="보기"><option value="center">센터 보기 (전체)</option><option value="sup">공급업체 보기</option></select><select class="in" id="supWho" aria-label="공급업체" hidden></select><input class="in" id="supDate" type="date" aria-label="출고일"><input class="in" id="supQ" placeholder="업체·품목 검색" style="width:150px"><button class="btn" id="supOut" hidden></button></div></div>
   <div id="supGate" hidden></div>
-  <div id="supBody"><div class="kpis" id="supKpi"></div>
+  <div id="supBody"><div id="supFlow"></div><div class="kpis" id="supKpi" style="margin-top:12px"></div>
   <div class="grid2 side" style="margin-top:16px"><div class="panel"><div class="ph"><h3>공급업체</h3><span class="sub">진행 단계 · 준비 품목</span></div><div class="sup-list" id="supList"></div></div><div id="supDetail"></div></div>
+  <div id="supOutBox"></div>
   <div id="supAcct"></div></div>
   <div class="sup-doc" id="supDoc" hidden><div class="sup-doc-in"><div class="row no-print" style="justify-content:flex-end;gap:6px"><button class="btn pri sm" data-docp>인쇄</button><button class="btn sm" data-docx>닫기</button></div><div id="supDocBody"></div></div></div>
 </section>
@@ -2193,6 +2201,7 @@ function drawOptLine(){
    공유 DB가 있으면 sup_ship/{날짜_업체} 문서에 저장, 없으면 이 브라우저에 저장. */
 const SUP = {ship:store.get('supShip', {}), sel:null, date:TODAY, mode:'center', who:'', q:''};
 const SUP_ST = ['발주접수', '출고준비', '출고확정', '입고완료'];
+const SUP_ST_LBL = {'발주접수':'발주접수', '출고준비':'업체 출고준비', '출고확정':'업체 출고확정', '입고완료':'센터 입고완료'};
 const SUP_REASON = ['', '재고 부족', '품절', '품질 불량', '규격 변경', '기타'];
 function supName(l){
   const it = typeof stdItem === 'function' ? stdItem(l.code) : null;if (it && it.sup) return it.sup;
@@ -2246,7 +2255,11 @@ async function supSave(g, patch){
 }
 function supItemSet(g, code, patch){const st = supState(g);const items = Object.assign({}, st.items);items[code] = Object.assign({}, items[code] || {}, patch);
   supSave(g, {items, status:st.status === '발주접수' ? '출고준비' : st.status});}
-function supStepsHtml(st){const i = SUP_ST.indexOf(st.status);return `<div class="sup-steps">${SUP_ST.map((k, j) => `<span class="${j <= i ? 'on' : ''}"><i>${j + 1}</i>${k}</span>`).join('')}</div>`;}
+function supItemRcv(st, it){const x = st.items?.[it.code || it.name];return x && x.rcv != null ? x.rcv : supItemOut(st, it);}
+// 센터가 학교에 보낼 수 있는 양 = 입고 − 불량 (입고 전이면 null)
+function supItemAvail(st, it){if (st.status !== '입고완료') return null;const x = st.items?.[it.code || it.name] || {};return Math.max(0, supItemRcv(st, it) - (x.bad || 0));}
+function supItemSet2(g, code, patch){const st = supState(g);const items = Object.assign({}, st.items);items[code] = Object.assign({}, items[code] || {}, patch);supSave(g, {items});}
+function supStepsHtml(st){const i = SUP_ST.indexOf(st.status);return `<div class="sup-steps">${SUP_ST.map((k, j) => `<span class="${j <= i ? 'on' : ''}"><i>${j + 1}</i>${SUP_ST_LBL[k]}</span>`).join('')}</div>`;}
 function supPill(s){return `<span class="pill ${{'발주접수':'', '출고준비':'info', '출고확정':'navy', '입고완료':'ok'}[s] || ''}">${s}</span>`;}
 function renderSup(force){
   if (view !== 'sup') return;
@@ -2276,23 +2289,26 @@ function renderSup(force){
   if (!g){box.innerHTML = '<div class="panel"><div class="pb muted">공급업체를 고르세요.</div></div>';return;}
   if (!force && box.contains(document.activeElement) && box._g === g.name) return;box._g = g.name;
   const st = supState(g);const lock = st.status === '출고확정' || st.status === '입고완료';const center = SUP.mode === 'center';
+  const rcvCol = st.status === '출고확정' || st.status === '입고완료';
   let tot = 0, totOut = 0;g.items.forEach(it => {tot += it.price * it.qty;totOut += it.price * supItemOut(st, it);});
   box.innerHTML = `<div class="panel"><div class="ph"><h3>${esc(g.name)}</h3><span class="sub">${SUP.date} 출고 · 품목 ${g.items.length}개 · 학교 ${g.schools.size}곳${tot ? ' · 발주 ' + Math.round(tot).toLocaleString() + '원' : ''}</span><div class="r">${supPill(st.status)}</div></div>
     <div class="pb">${supStepsHtml(st)}${st.status !== '발주접수' && st.at ? `<div class="small muted" style="margin-top:6px">마지막 처리 ${new Date(st.at).toLocaleString('ko-KR')}${st.eta ? ' · 센터 도착 예정 ' + esc(st.eta) : ''}${st.car ? ' · 차량 ' + esc(st.car) : ''}${st.temp != null && st.temp !== '' ? ' · 출고 온도 ' + esc(st.temp) + '°C' : ''}${st.recvAt ? ' · 입고 확인 ' + new Date(st.recvAt).toLocaleTimeString('ko-KR') : ''}</div>` : ''}</div>
-    <div class="tw scroll" style="max-height:520px"><table class="t" id="supTbl"><thead><tr><th><input type="checkbox" id="supAllReady" ${lock ? 'disabled' : ''} aria-label="전체 준비"></th><th>품목</th><th>규격</th><th>보관</th><th class="n">발주</th><th class="n">출고수량</th><th>단위</th><th>결품·부족 사유</th><th class="n">학교</th>${tot ? '<th class="n">금액</th>' : ''}</tr></thead><tbody>
+    <div class="tw scroll" style="max-height:520px"><table class="t" id="supTbl"><thead><tr><th><input type="checkbox" id="supAllReady" ${lock ? 'disabled' : ''} aria-label="전체 준비"></th><th>품목</th><th>규격</th><th>보관</th><th class="n">발주</th><th class="n">출고수량</th>${rcvCol ? '<th class="n">입고(검수)</th><th class="n">불량</th>' : ''}<th>단위</th><th>결품·부족 사유</th><th class="n">학교</th>${tot ? '<th class="n">금액</th>' : ''}</tr></thead><tbody>
       ${g.items.map(it => {const k = it.code || it.name;const x = st.items?.[k] || {};const out = supItemOut(st, it);const shortQ = out < it.qty;
         return `<tr class="${x.ready ? 'sup-ready' : ''}"><td><input type="checkbox" data-supready="${esc(k)}" ${x.ready ? 'checked' : ''} ${lock ? 'disabled' : ''} aria-label="준비 완료"></td><td style="min-width:200px">${esc(it.name)}<div class="small muted mono">${esc(it.code || '')}</div></td><td class="small">${esc(it.spec || '')}</td><td>${it.storage ? `<span class="st-tag st-${esc(it.storage)}">${esc(it.storage)}</span>` : ''}</td>
-          <td class="n mono">${it.qty}</td><td class="n"><input class="in mono" style="width:76px;text-align:right" type="number" min="0" step="1" data-supout="${esc(k)}" value="${out}" ${lock ? 'disabled' : ''}></td><td class="small">${esc(it.ou || '')}</td>
+          <td class="n mono">${it.qty}</td><td class="n"><input class="in mono" style="width:76px;text-align:right" type="number" min="0" step="1" data-supout="${esc(k)}" value="${out}" ${lock ? 'disabled' : ''}></td>
+          ${rcvCol ? `<td class="n"><input class="in mono" style="width:70px;text-align:right" type="number" min="0" step="1" data-suprcv="${esc(k)}" value="${supItemRcv(st, it)}" ${st.status !== '출고확정' || !center ? 'disabled' : ''}></td><td class="n"><input class="in mono" style="width:56px;text-align:right" type="number" min="0" step="1" data-supbad="${esc(k)}" value="${x.bad || 0}" ${st.status !== '출고확정' || !center ? 'disabled' : ''}></td>` : ''}<td class="small">${esc(it.ou || '')}</td>
           <td><select class="in" data-supreason="${esc(k)}" ${lock || !shortQ ? 'disabled' : ''}>${SUP_REASON.map(r => `<option ${r === (x.reason || '') ? 'selected' : ''} value="${r}">${r || (shortQ ? '사유 선택' : '-')}</option>`).join('')}</select></td>
           <td class="n"><button class="btn sm ghost" data-supby="${esc(k)}" title="${esc(it.by.map(b => (SCH[b.sid]?.name || b.sid) + ' ' + b.qty).join(', '))}">${it.by.length}곳</button></td>${tot ? `<td class="n mono">${it.price ? Math.round(it.price * out).toLocaleString() : '-'}</td>` : ''}</tr>`;}).join('')}
     </tbody></table></div>
     <div class="pb sup-act">
       ${!lock ? `<label class="field">센터 도착 예정<input class="in" id="supEta" type="time" value="${esc(st.eta || '06:30')}"></label><label class="field">차량번호<input class="in" id="supCar" value="${esc(st.car || '')}" placeholder="예: 12가3456"></label><label class="field">출고 온도(°C)<input class="in" id="supTemp" type="number" step="0.1" value="${esc(st.temp ?? '')}" placeholder="냉장·냉동품"></label>
         <button class="btn pri" data-supact="confirm">출고확정</button>` : ''}
-      ${st.status === '출고확정' && center ? '<button class="btn pri" data-supact="recv">센터 입고 확인</button><button class="btn" data-supact="undo">출고확정 취소</button>' : ''}
+      ${st.status === '출고확정' && center ? '<label class="field">입고 온도(°C)<input class="in" id="supRcvTemp" type="number" step="0.1" placeholder="검수 시 측정"></label><button class="btn pri" data-supact="recv">센터 입고(검수) 확인</button><button class="btn" data-supact="undo">출고확정 취소</button>' : ''}
       ${st.status === '입고완료' && center ? '<button class="btn" data-supact="unrecv">입고 확인 취소</button>' : ''}
       <span style="flex:1"></span><button class="btn" data-supact="stmt">거래명세서</button><button class="btn" data-supact="label">학교별 분류표</button><button class="btn" data-supact="csv">CSV</button></div></div>`;
   $('#supAcct').innerHTML = center ? supAcctHtml(all) : '';
+  {const plan = supSchoolPlan(all);$('#supFlow').innerHTML = center ? supFlowHtml(all, plan) : '';renderSupOut(plan);}
 }
 function supDoc(g, kind){
   const st = supState(g);const rows = g.items.map(it => ({it, out:supItemOut(st, it)}));
@@ -2320,6 +2336,8 @@ function supBind(){
   const cur = () => supAgg().find(g => g.name === SUP.sel);
   $('#supDetail').addEventListener('change', e => {const g = cur();if (!g) return;const t = e.target;
     if (t.dataset.supready){supItemSet(g, t.dataset.supready, {ready:t.checked});return;}
+    if (t.dataset.suprcv){supItemSet2(g, t.dataset.suprcv, {rcv:Math.max(0, Math.round(+t.value || 0))});return;}
+    if (t.dataset.supbad){supItemSet2(g, t.dataset.supbad, {bad:Math.max(0, Math.round(+t.value || 0))});return;}
     if (t.dataset.supout){const it = g.items.find(i => (i.code || i.name) === t.dataset.supout);const v = Math.max(0, Math.round(+t.value || 0));supItemSet(g, t.dataset.supout, {out:Math.min(v, it ? it.qty * 3 : v)});return;}
     if (t.dataset.supreason != null && t.dataset.supreason !== undefined && t.matches('[data-supreason]')){supItemSet(g, t.dataset.supreason, {reason:t.value});return;}
     if (t.id === 'supAllReady'){const st = supState(g);const items = Object.assign({}, st.items);g.items.forEach(it => {const k = it.code || it.name;items[k] = Object.assign({}, items[k] || {}, {ready:t.checked});});supSave(g, {items, status:st.status === '발주접수' ? '출고준비' : st.status});}
@@ -2335,7 +2353,9 @@ function supBind(){
       const cold = g.items.some(it => /냉장|냉동/.test(it.storage || ''));const temp = $('#supTemp').value;
       if (cold && temp === ''){toast('냉장·냉동 품목이 있어 출고 온도를 입력해야 합니다.');return;}
       supSave(g, {status:'출고확정', eta:$('#supEta').value, car:$('#supCar').value.trim(), temp, confirmAt:Date.now()});toast(`${g.name} 출고를 확정했습니다. 센터에 입고 예정으로 표시됩니다.`);return;}
-    if (a === 'recv'){supSave(g, {status:'입고완료', recvAt:Date.now()});toast(`${g.name} 입고를 확인했습니다.`);return;}
+    if (a === 'recv'){const temp = $('#supRcvTemp')?.value ?? '';const cold = g.items.some(it => /냉장|냉동/.test(it.storage || ''));if (cold && temp === ''){toast('냉장·냉동 품목이 있어 입고 온도를 입력해야 합니다.');return;}
+      const items = Object.assign({}, st.items);g.items.forEach(it => {const k = it.code || it.name;items[k] = Object.assign({}, items[k] || {});if (items[k].rcv == null) items[k].rcv = supItemOut(st, it);});
+      supSave(g, {status:'입고완료', recvAt:Date.now(), rcvTemp:temp, items});toast(`${g.name} 입고(검수)를 확인했습니다. 센터 출고 목록에 반영됩니다.`);return;}
     if (a === 'undo'){supSave(g, {status:'출고준비', confirmAt:null});return;}
     if (a === 'unrecv'){supSave(g, {status:'출고확정', recvAt:null});return;}
     if (a === 'stmt' || a === 'label'){supDoc(g, a);return;}
@@ -2344,6 +2364,62 @@ function supBind(){
   $('#supDoc').addEventListener('click', e => {if (e.target.id === 'supDoc' || e.target.closest('[data-docx]')) $('#supDoc').hidden = true;if (e.target.closest('[data-docp]')){document.body.classList.add('printing-doc');window.print();setTimeout(() => document.body.classList.remove('printing-doc'), 500);}});
 }
 function supDbInit(){if (!DB) return;if (DA.adminView) DB.collection('sup_auth').limit(500).onSnapshot(sn => {SUP.auth = {};sn.docs.forEach(d => {const x = d.data();SUP.auth[d.id] = {sup:x.sup, at:x.at, salt:x.salt, iter:x.iter, hash:x.hash};});renderSup();}, e => {});DB.collection('sup_ship').limit(500).onSnapshot(sn => {sn.docs.forEach(d => SUP.ship[d.id] = d.data());renderSup();}, e => {});}
+
+/* ---------- 센터 출고 (학교별) — 공급업체 → (입고)센터 → (출고)센터 → 학교 ---------- */
+SUP.open = null;
+function supOutKey(sid){return 'o_' + SUP.date + '_' + sid;}
+function supOutState(sid){return SUP.ship[supOutKey(sid)] || {status:'대기'};}
+function supSchoolPlan(all){
+  all = all || supAgg();const S = {};
+  const ord = sid => {const c = COURSE_OF[sid];const P = c && PLAN[c];return (c || 'Z') + String(P ? P.order.indexOf(sid) : 99).padStart(3, '0');};
+  all.forEach(g => {const st = supState(g);
+    g.items.forEach(it => {const k = it.code || it.name;let left = supItemAvail(st, it);
+      it.by.slice().sort((a, b) => ord(a.sid).localeCompare(ord(b.sid))).forEach(b => {
+        const s = S[b.sid] || (S[b.sid] = {sid:b.sid, lines:[], sups:new Set(), supsIn:new Set()});s.sups.add(g.name);if (st.status === '입고완료') s.supsIn.add(g.name);
+        const alloc = left == null ? null : Math.min(b.qty, left);if (left != null) left -= alloc;
+        s.lines.push({g:g.name, k, name:it.name, spec:it.spec, ou:it.ou, storage:it.storage, ord:b.qty, alloc});});});});
+  return Object.values(S).sort((a, b) => ord(a.sid).localeCompare(ord(b.sid))).map(s => Object.assign(s, {ready:s.supsIn.size === s.sups.size, short:s.lines.filter(l => l.alloc != null && l.alloc < l.ord).length}));
+}
+function supSchoolRecv(sid){const ds = DEL.filter(d => d.sid === sid && d.date === TODAY);if (!ds.length) return null;const d = ds.find(x => x.status !== '인수완료') || ds[ds.length - 1];return d;}
+function supFlowHtml(all, plan){
+  const sts = all.map(g => supState(g).status);const N = all.length, M = plan.length;
+  const shipped = sts.filter(s => s === '출고확정' || s === '입고완료').length, rcvd = sts.filter(s => s === '입고완료').length;
+  const out = plan.filter(p => supOutState(p.sid).status === '상차완료').length;const got = plan.filter(p => supOutState(p.sid).status === '상차완료' && supSchoolRecv(p.sid)?.status === '인수완료').length;
+  const card = (n, t, v, tot, sub) => `<div class="flow-c ${tot && v >= tot ? 'done' : v ? 'part' : ''}"><span class="flow-n">${n}</span><b>${t}</b><span class="flow-v">${v}<small> / ${tot}</small></span><span class="small muted">${sub}</span><div class="sup-bar"><i style="width:${tot ? Math.round(v / tot * 100) : 0}%"></i></div></div>`;
+  return `<div class="flow">${card(1, '공급업체 출고', shipped, N, '업체 출고확정')}<span class="flow-ar">→</span>${card(2, '센터 입고(검수)', rcvd, N, '검수 완료 업체')}<span class="flow-ar">→</span>${card(3, '센터 출고', out, M, '학교별 상차 완료')}<span class="flow-ar">→</span>${card(4, '학교 인수', got, M, '배송 앱 인수완료')}</div>`;
+}
+function renderSupOut(plan){
+  const box = $('#supOutBox');if (!box) return;if (SUP.mode !== 'center'){box.innerHTML = '';return;}
+  const rows = plan.map(p => {const o = supOutState(p.sid);const d = supSchoolRecv(p.sid);const s = SCH[p.sid];const open = SUP.open === p.sid;
+    const btn = o.status === '상차완료' ? `<span class="pill ok">상차완료</span> <span class="small muted">${o.at ? new Date(o.at).toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'}) : ''}</span> <button class="btn sm ghost" data-supo="undo" data-sid="${p.sid}">취소</button>`
+      : p.ready ? `<button class="btn sm pri" data-supo="load" data-sid="${p.sid}">상차(출고) 확인</button>` : `<span class="pill warn">입고 대기</span> <button class="btn sm ghost" data-supo="part" data-sid="${p.sid}" title="입고된 품목만 먼저 출고">부분 출고</button>`;
+    return `<tr data-supopen="${p.sid}" style="cursor:pointer"><td><span class="tag">${COURSE_OF[p.sid] || '-'}</span></td><td><b>${esc(s?.name || p.sid)}</b></td><td class="n mono">${p.lines.length}</td><td class="small">${p.supsIn.size}/${p.sups.size} 업체 입고</td><td class="n mono ${p.short ? 'crit-t' : ''}">${p.short || '-'}</td><td>${btn}${o.status === '상차완료' && o.part ? ' <span class="pill warn">부분</span>' : ''}</td><td>${o.status !== '상차완료' ? '<span class="small muted">센터 출고 전</span>' : d ? delPill(d.status) : '<span class="small muted">배송 없음</span>'}</td></tr>` +
+      (open ? `<tr class="sup-sub"><td></td><td colspan="6"><table class="t"><thead><tr><th>품목</th><th>공급업체</th><th class="n">발주</th><th class="n">출고 배정</th><th>단위</th><th>보관</th></tr></thead><tbody>${p.lines.map(l => `<tr><td>${esc(l.name)}</td><td class="small">${esc(l.g)}</td><td class="n mono">${l.ord}</td><td class="n mono ${l.alloc != null && l.alloc < l.ord ? 'crit-t' : ''}">${l.alloc == null ? '<span class="muted">입고 전</span>' : l.alloc}</td><td class="small">${esc(l.ou || '')}</td><td>${l.storage ? `<span class="st-tag st-${esc(l.storage)}">${esc(l.storage)}</span>` : ''}</td></tr>`).join('')}</tbody></table></td></tr>` : '');}).join('');
+  box.innerHTML = `<div class="panel" style="margin-top:16px"><div class="ph"><h3>센터 출고 (학교별 상차)</h3><span class="sub">입고(검수)된 수량을 코스 순서대로 학교에 배정합니다 · 입고가 발주보다 적으면 코스 뒤쪽 학교부터 결품으로 표시</span><div class="r"><button class="btn sm" data-supo="print">학교별 출고표</button><button class="btn sm pri" data-supo="loadall">입고 완료 학교 모두 상차</button></div></div>
+    <div class="tw scroll" style="max-height:560px"><table class="t"><thead><tr><th>코스</th><th>학교</th><th class="n">품목</th><th>입고 상태</th><th class="n">결품</th><th>센터 출고</th><th>학교 인수</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="muted small">발주가 있는 학교가 없습니다.</td></tr>'}</tbody></table></div></div>`;
+}
+async function supOutSet(sid, patch){
+  const k = supOutKey(sid);const nx = Object.assign({}, SUP.ship[k] || {}, patch, {sid, date:SUP.date, at:Date.now(), kind:'out'});SUP.ship[k] = nx;
+  if (DB) dbWrite(() => DB.doc('sup_ship/' + k).set(nx));else store.set('supShip', SUP.ship);
+  renderSup(true);
+}
+function supOutPrint(plan){
+  $('#supDocBody').innerHTML = `<h2>센터 → 학교 출고표</h2><p>${SUP.date} · 입고(검수) 수량 기준 배정</p>` + plan.map(p => `<div class="doc-sch"><h3>[코스 ${COURSE_OF[p.sid] || '-'}] ${esc(SCH[p.sid]?.name || p.sid)} ${supOutState(p.sid).status === '상차완료' ? '· 상차완료' : ''}</h3><table><thead><tr><th>품목</th><th>공급업체</th><th>발주</th><th>출고</th><th>단위</th><th>보관</th><th>확인</th></tr></thead><tbody>${p.lines.map(l => `<tr><td>${esc(l.name)}</td><td>${esc(l.g)}</td><td class="n">${l.ord}</td><td class="n"><b>${l.alloc == null ? '입고 전' : l.alloc}</b></td><td>${esc(l.ou || '')}</td><td>${esc(l.storage || '')}</td><td style="width:50px">□</td></tr>`).join('')}</tbody></table></div>`).join('');
+  $('#supDoc').hidden = false;
+}
+function supOutBind(){
+  $('#supOutBox').addEventListener('click', e => {
+    const b = e.target.closest('[data-supo]');const plan = supSchoolPlan();
+    if (b){e.stopPropagation();const a = b.dataset.supo, sid = b.dataset.sid;
+      if (a === 'load') supOutSet(sid, {status:'상차완료', part:false});
+      if (a === 'part') supOutSet(sid, {status:'상차완료', part:true});
+      if (a === 'undo') supOutSet(sid, {status:'대기', part:false});
+      if (a === 'print') supOutPrint(plan);
+      if (a === 'loadall'){const ready = plan.filter(p => p.ready && supOutState(p.sid).status !== '상차완료');if (!ready.length){toast('입고가 끝나 상차할 수 있는 학교가 없습니다.');return;}ready.forEach(p => {SUP.ship[supOutKey(p.sid)] = {status:'상차완료', part:false, sid:p.sid, date:SUP.date, at:Date.now(), kind:'out'};if (DB) DB.doc('sup_ship/' + supOutKey(p.sid)).set(SUP.ship[supOutKey(p.sid)]).catch(() => {});});if (!DB) store.set('supShip', SUP.ship);toast(`${ready.length}개 학교 상차를 확인했습니다.`);renderSup(true);}
+      return;}
+    const r = e.target.closest('[data-supopen]');if (r){SUP.open = SUP.open === r.dataset.supopen ? null : r.dataset.supopen;renderSup(true);}
+  });
+}
 
 /* ---------- IoT 단말·블루투스 온습도계 원격 제어 ----------
    경로: 관제(이 화면) → 기사 모바일 앱(중계) → 차량 단말(BLE 게이트웨이) → 블루투스 온습도계
@@ -3366,7 +3442,7 @@ function bind(){
   $('#optReset').onclick = () => {store.set('optPlan', {});COURSES.forEach(c => relayState[c.id] = !!c.relay);store.set('relay', relayState);planAll();COURSES.forEach(c => {if (PLAN[c.id]) delete PLAN[c.id]._road;});renderGis(true);renderOpt();toast('기본 코스 순서로 되돌렸습니다.');};
   $('#optTbl').addEventListener('click', e => {const v = e.target.closest('[data-optv]');if (v){optView = optView === v.dataset.optv ? null : v.dataset.optv;renderOpt();drawOptLine();return;}const a = e.target.closest('[data-opta]');if (a) applyOpt([a.dataset.opta]);});
   $('#odoCsv').onclick = odoCsv;
-  supBind();
+  supBind();supOutBind();
   $('#odoTbl').addEventListener('click', e => {const r = e.target.closest('[data-veh]');if (!r) return;selVeh = r.dataset.veh;renderVehList();renderVehDetail(true);window.scrollTo({top:0, behavior:'smooth'});});
   $('#optimize').onclick = () => {planAll();optimizeAll();renderOpt();renderGis(false);const bad = Object.values(PLAN).reduce((a, p) => a + p.bad, 0);toast(`6개 코스를 다시 계산했습니다. 30분 초과 구간 ${bad}개`);};
   $('#applyRoute').onclick = () => {buildHistory();toast('새 방문 순서를 다음 출발부터 적용합니다.');};
