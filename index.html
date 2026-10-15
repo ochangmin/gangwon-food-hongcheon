@@ -2470,24 +2470,33 @@ function buildDaily(date){
     iot:{n:iq.length, ok:iq.filter(c => c.status === '완료').length, fail:iq.filter(c => c.status === '실패').length},
     temp:{avg:+(VEH.filter(v => v.region === '홍천군').reduce((a, v) => a + v.temp, 0) / Math.max(1, VEH.filter(v => v.region === '홍천군').length)).toFixed(1)}};
 }
-async function saveDaily(close){
-  if (DAY.busy) return;DAY.busy = true;
+// manual=true: 사용자가 누른 저장(결과 알림), false: 자동 저장(조용히, 바뀐 것만, 실패 시 1분 뒤 재시도)
+async function saveDaily(close, manual){
+  if (DAY.busy) return;DAY.busy = true;manual = manual || close;
+  DAY.lastSave = Date.now();
   try{
     const date = TODAY;const sum = buildDaily(date);const prev = DAY.list[date];if (prev?.closed && !close){sum.closed = prev.closed;sum.closedAt = prev.closedAt;}
     if (close){sum.closed = true;sum.closedAt = Date.now();}
     const rows = DEL.filter(d => d.date === date).map(d => [d.id, d.sid, d.meal, d.status, d.veh || '', d.depart ?? null, d.arrive ?? null, d.done ?? null, d.leg != null ? +d.leg.toFixed(1) : null, d.sens?.peakT != null ? +d.sens.peakT.toFixed(1) : null, d.loaded ? 1 : 0]);
     if (DB && DA.adminView){
-      await DB.doc('daily/' + date).set(sum);await DB.doc('del_day/' + date).set({date, at:Date.now(), keys:['id', 'sid', 'meal', 'status', 'veh', 'depart', 'arrive', 'done', 'leg', 'peakT', 'loaded'], rows});await DB.doc('odo_day/' + date).set({date, at:Date.now(), odo:sum.veh.odo});
+      const sig = o => JSON.stringify(o, (k, v) => k === 'at' ? undefined : v);DAY.sig = DAY.sig || {};
+      const docs = [['daily/' + date, sum], ['del_day/' + date, {date, at:Date.now(), keys:['id', 'sid', 'meal', 'status', 'veh', 'depart', 'arrive', 'done', 'leg', 'peakT', 'loaded'], rows}], ['odo_day/' + date, {date, at:Date.now(), odo:sum.veh.odo}]];
+      for (const [path, doc] of docs){const g = sig(doc);if (!manual && DAY.sig[path] === g) continue;await DB.doc(path).set(doc);DAY.sig[path] = g;}
     } else if (!DB){const o = dayLocalGet();o[date] = Object.assign(sum, {rows});dayLocalSet(o);DAY.list[date] = o[date];}
     else {DAY.busy = false;return false;}
     DAY.list[date] = Object.assign(DAY.list[date] || {}, sum);DAY.lastSave = Date.now();
+    DAY.err = null;
     if (close) toast(`${date} 일일 마감을 저장했습니다.`);
     if (view === 'day') renderDay(true);
     return true;
-  }catch(e){toast('일일 기록 저장 실패: ' + (e.code || e.message));return false;}
+  }catch(e){
+    DAY.err = e.code || e.message;DAY.lastSave = Date.now() - 4 * 60e3; // 1분 뒤 다시 시도
+    if (manual) toast('일일 기록 저장 실패: ' + (e.code === 'rate_limited' ? '요청이 많아 잠시 뒤 다시 저장합니다' : DAY.err));
+    if (view === 'day') renderDay(true);
+    return false;}
   finally{DAY.busy = false;}
 }
-function dayAutoTick(){if (Date.now() - DAY.lastSave > 5 * 60e3 && (!DB || DA.adminView)) saveDaily(false);}
+function dayAutoTick(){if (document.hidden) return;if (Date.now() - DAY.lastSave > 5 * 60e3 && (!DB || DA.adminView)) saveDaily(false, false);}
 function dayDbInit(){
   if (!DB){DAY.list = dayLocalGet();return;}
   DB.collection('daily').limit(400).onSnapshot(sn => {sn.docs.forEach(d => DAY.list[d.id] = d.data());if (view === 'day') renderDay(true);}, e => {});
@@ -2505,7 +2514,7 @@ async function renderDay(force){
   const sel = $('#daySel');const opts = dates.map(d => `<option value="${d}" ${d === DAY.sel ? 'selected' : ''}>${d}${d === TODAY ? ' (오늘)' : ''}${DAY.list[d]?.closed ? ' · 마감' : ''}</option>`).join('');
   if (sel.dataset.o !== opts){sel.innerHTML = opts;sel.dataset.o = opts;}
   const s = DAY.sel === TODAY ? Object.assign(buildDaily(TODAY), {closed:DAY.list[TODAY]?.closed}) : DAY.list[DAY.sel];
-  $('#dayStatus').innerHTML = DB ? (DA.adminView ? `공유 DB 저장 · 자동 저장 5분마다${DAY.lastSave ? ' · 마지막 저장 ' + new Date(DAY.lastSave).toLocaleTimeString('ko-KR') : ''}` : '공유 DB 읽기 전용 (저장은 관리자만)') : '이 브라우저에 저장 (시연 사이트)';
+  $('#dayStatus').innerHTML = DB ? (DA.adminView ? `공유 DB 저장 · 자동 저장 5분마다${DAY.err ? ' · <span class="crit-t">자동 저장 지연(잠시 뒤 재시도)</span>' : DAY.lastSave ? ' · 마지막 확인 ' + new Date(DAY.lastSave).toLocaleTimeString('ko-KR') : ''}` : '공유 DB 읽기 전용 (저장은 관리자만)') : '이 브라우저에 저장 (시연 사이트)';
   if (!s){$('#dayKpi').innerHTML = '';$('#dayBody').innerHTML = '<div class="panel"><div class="pb muted">이 날짜의 저장된 기록이 없습니다.</div></div>';return;}
   $('#dayKpi').innerHTML = kpi('배송 완료', s.del.done, '/ ' + s.del.total, s.closed ? '마감됨' : DAY.sel === TODAY ? '진행 중' : '저장본', s.del.total && s.del.done === s.del.total ? 'ok' : '') +
     kpi('30분 초과', s.del.late, '건', '평균 구간 ' + (s.del.avgLeg ?? '-') + '분', s.del.late ? 'warn' : 'ok') + kpi('총 운행', fmt1(s.veh.km), 'km', s.veh.n + '대 운행') +
@@ -2525,7 +2534,7 @@ async function renderDay(force){
 }
 function dayBind(){
   $('#daySel').addEventListener('change', e => {DAY.sel = e.target.value;renderDay(true);});
-  $('#daySave').onclick = () => saveDaily(false).then(ok => ok && toast('오늘 기록을 저장했습니다.'));
+  $('#daySave').onclick = () => saveDaily(false, true).then(ok => ok && toast('오늘 기록을 저장했습니다.'));
   $('#dayClose').onclick = () => saveDaily(true);
   $('#dayBody').addEventListener('click', e => {const r = e.target.closest('[data-dayd]');if (r){DAY.sel = r.dataset.dayd;renderDay(true);window.scrollTo({top:0, behavior:'smooth'});return;}
     if (e.target.closest('[data-day="csv"]')) saveCsv(`배송기록_${DAY.sel}.csv`, DAY.sel + ' 배송 기록', [['날짜', '식사', '코스', '학교', '차량', '상태', '출발', '도착', '완료', '구간(분)', '하차 최고(°C)', '센터 출고'], ...(DAY._rows || []).map(r => [DAY.sel, r.meal, COURSE_OF[r.sid] || '', SCH[r.sid]?.name || r.sid, r.veh || '', r.status, r.depart != null ? hhmm(r.depart) : '', r.arrive != null ? hhmm(r.arrive) : '', r.done != null ? hhmm(r.done) : '', r.leg != null ? fmt1(r.leg) : '', r.peakT != null ? fmt1(r.peakT) : '', r.loaded ? 'Y' : ''])]);});
