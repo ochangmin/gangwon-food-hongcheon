@@ -30,13 +30,12 @@ jobs:
         run: cp android/app/build/outputs/apk/release/app-release.apk gwfood-driver.apk && ls -la gwfood-driver.apk
       - uses: actions/upload-artifact@v4
         with: {name: gwfood-driver, path: gwfood-driver.apk}
-      - name: 다운로드용 릴리스 갱신
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: android-latest
-          name: 먹거리 이음 기사 앱 (안드로이드)
-          body: |
-            강원 먹거리 이음 배송 기사용 안드로이드 앱. 빌드 번호 ${{ github.run_number }} · ${{ github.sha }}
-            설치: 휴대폰에서 gwfood-driver.apk를 내려받아 열고, '출처를 알 수 없는 앱 설치'를 허용하세요.
-          files: gwfood-driver.apk
-          make_latest: true
+      - name: 사이트 다운로드 폴더에 올리기 (저장소가 비공개여도 급식.shop에서 받을 수 있게)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin ${{ github.ref_name }} && git checkout -B ${{ github.ref_name }} origin/${{ github.ref_name }}
+          mkdir -p downloads && cp gwfood-driver.apk downloads/gwfood-driver.apk
+          printf '{"build":%s,"sha":"%s","at":"%s"}\n' "${{ github.run_number }}" "${GITHUB_SHA::7}" "$(date -u +%FT%TZ)" > downloads/version.json
+          git add downloads && git commit -m "기사 앱 빌드 ${{ github.run_number }} 배포" || exit 0
+          for i in 1 2 3; do git push origin HEAD:${{ github.ref_name }} && break; git pull --rebase origin ${{ github.ref_name }}; done

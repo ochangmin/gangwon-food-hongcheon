@@ -1,10 +1,11 @@
 // POST /api/db  {op:'get'|'list'|'set'|'update'|'delete', path?, col?, data?, where?}
-const C = require('../lib/core');
-const P = require('../lib/policy');
+const C = require('./_lib/core');
+const P = require('./_lib/policy');
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return C.send(res, 405, {error:'method'});
   if (!C.configured()) return C.send(res, 503, {error:'storage_not_configured'});
+  if (!C.encReady()) return C.send(res, 503, {error:'encryption_key_missing'});
   try{
     const u = await C.who(req);if (!u) return C.send(res, 401, {error:'login'});
     const b = await C.body(req);const op = b.op;
@@ -34,6 +35,9 @@ module.exports = async (req, res) => {
       else {const d = chk.data;// 비밀번호 해시는 덮어쓰기 시 유지
         if ((col === 'auth' || col === 'sup_auth') && prev && !d.hash){d.hash = prev.hash;d.salt = prev.salt;d.iter = prev.iter;}
         await C.putDoc(col, id, d);}
+      // 변경 원장에 기록 (비밀번호 문서는 내용 해시 없이 기록만)
+      const secretCol = col === 'auth' || col === 'sup_auth';
+      await C.ledger({at:Date.now(), col, id, op, by:u.role + ':' + u.sub, doc:op === 'delete' || secretCol ? null : C.sha256(JSON.stringify(chk.data))});
       return C.send(res, 200, {ok:true});
     }
     return C.send(res, 400, {error:'op'});

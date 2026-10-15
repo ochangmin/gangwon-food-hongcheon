@@ -5,7 +5,7 @@
 //  {op:'login', role:'sup', id, pw}      → sup_auth/{id}
 //  {op:'login', role:'driver', id, pw}   → drivers(loginId 또는 문서 id) + auth/{기사id}
 //  {op:'admin_pw', pw, newPw}            → 관리자 비밀번호 변경
-const C = require('../lib/core');
+const C = require('./_lib/core');
 const DAY = 12 * 3600e3;
 
 module.exports = async (req, res) => {
@@ -13,10 +13,11 @@ module.exports = async (req, res) => {
   const b = await C.body(req);
   if (b.op === 'status'){
     if (!C.configured()) return C.send(res, 200, {configured:false});
-    try{const a = await C.redis(['GET', 'sys:admin']);return C.send(res, 200, {configured:true, hasAdmin:!!a});}
+    try{const a = await C.redis(['GET', 'sys:admin']);return C.send(res, 200, {configured:C.encReady(), storage:true, encryption:C.encReady(), hasAdmin:!!a});}
     catch(e){return C.send(res, 200, {configured:false, error:String(e.message).slice(0, 120)});}
   }
   if (!C.configured()) return C.send(res, 503, {error:'storage_not_configured'});
+  if (!C.encReady()) return C.send(res, 503, {error:'암호화 키(DATA_ENC_KEY)가 설정되지 않았습니다.'});
   try{
     const bad = () => C.send(res, 401, {error:'아이디 또는 비밀번호가 맞지 않습니다. 관리자에게 문의하세요.'});
     if (b.op === 'setup'){
