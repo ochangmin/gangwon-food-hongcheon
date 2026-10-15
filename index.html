@@ -1046,6 +1046,7 @@ body.driver-mode{background:#EEF2F5}
     <button role="tab" data-v="ana">배송 분석</button>
     <button role="tab" data-v="drv">운행 시연</button>
     <button role="tab" data-v="sup">입·출고 관리</button>
+    <button role="tab" data-v="day">일일 관리</button>
     <button role="tab" data-v="ship">출고 데이터</button>
     <button role="tab" data-v="acct">기사 계정</button>
     <button role="tab" data-v="cfg">IoT 설정</button>
@@ -1228,6 +1229,11 @@ body.driver-mode{background:#EEF2F5}
   <div id="supOutBox"></div>
   <div id="supAcct"></div></div>
   <div class="sup-doc" id="supDoc" hidden><div class="sup-doc-in"><div class="row no-print" style="justify-content:flex-end;gap:6px"><button class="btn pri sm" data-docp>인쇄</button><button class="btn sm" data-docx>닫기</button></div><div id="supDocBody"></div></div></div>
+</section>
+<section class="view" id="v-day" hidden>
+  <div class="vhead"><div><h2>일일 관리</h2><p>하루 운영 기록(배송 건별 결과, 코스별 30분 판정, 차량별 운행 거리, 입·출고, 하차 고온, 경보)을 날짜별로 저장합니다. 오늘 기록은 5분마다 자동 저장되고, 업무가 끝나면 '일일 마감'으로 확정합니다. <span class="small" id="dayStatus"></span></p></div>
+    <div class="act"><select class="in" id="daySel" aria-label="날짜"></select><button class="btn" id="daySave">지금 저장</button><button class="btn pri" id="dayClose">일일 마감</button></div></div>
+  <div class="kpis" id="dayKpi"></div><div id="dayBody" style="margin-top:16px"></div>
 </section>
 <section class="view" id="v-ship" hidden>
   <div class="vhead"><div><h2>umji 출고 데이터 · 홍천</h2><p>강원 먹거리 시스템(umji.gwd.go.kr)에서 내려받은 출고 엑셀을 올리면 홍천센터 출고분만 골라 저장합니다. 다른 센터·지역 행은 저장하지 않습니다.</p></div></div>
@@ -2368,6 +2374,7 @@ function supDbInit(){if (!DB) return;if (DA.adminView) DB.collection('sup_auth')
 /* ---------- 센터 출고 (학교별) — 공급업체 → (입고)센터 → (출고)센터 → 학교 ---------- */
 SUP.open = null;
 function supOutKey(sid){return 'o_' + SUP.date + '_' + sid;}
+function supSchoolAlloc(sid){const now = Date.now();if (!SUP._ac || now - SUP._ac.t > 5000){SUP._ac = {t:now, m:{}};const keep = SUP.date;SUP.date = TODAY;try{supSchoolPlan().forEach(p => {SUP._ac.m[p.sid] = Object.fromEntries(p.lines.filter(l => l.alloc != null).map(l => [l.k, l.alloc]));});}finally{SUP.date = keep;}}return SUP._ac.m[sid] || {};}
 function supOutState(sid){return SUP.ship[supOutKey(sid)] || {status:'대기'};}
 function supSchoolPlan(all){
   all = all || supAgg();const S = {};
@@ -2398,7 +2405,11 @@ function renderSupOut(plan){
   box.innerHTML = `<div class="panel" style="margin-top:16px"><div class="ph"><h3>센터 출고 (학교별 상차)</h3><span class="sub">입고(검수)된 수량을 코스 순서대로 학교에 배정합니다 · 입고가 발주보다 적으면 코스 뒤쪽 학교부터 결품으로 표시</span><div class="r"><button class="btn sm" data-supo="print">학교별 출고표</button><button class="btn sm pri" data-supo="loadall">입고 완료 학교 모두 상차</button></div></div>
     <div class="tw scroll" style="max-height:560px"><table class="t"><thead><tr><th>코스</th><th>학교</th><th class="n">품목</th><th>입고 상태</th><th class="n">결품</th><th>센터 출고</th><th>학교 인수</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="muted small">발주가 있는 학교가 없습니다.</td></tr>'}</tbody></table></div></div>`;
 }
+function supLinkDel(sid, loaded){
+  DEL.filter(d => d.sid === sid && d.date === TODAY).forEach(d => {d.loaded = loaded;if (loaded && d.status === '접수'){const c = COURSES.find(x => x.id === COURSE_OF[sid]);if (c){d.veh = c.veh;d.status = '배차';}}});saveDel();
+}
 async function supOutSet(sid, patch){
+  if (SUP.date === TODAY) supLinkDel(sid, patch.status === '상차완료');
   const k = supOutKey(sid);const nx = Object.assign({}, SUP.ship[k] || {}, patch, {sid, date:SUP.date, at:Date.now(), kind:'out'});SUP.ship[k] = nx;
   if (DB) dbWrite(() => DB.doc('sup_ship/' + k).set(nx));else store.set('supShip', SUP.ship);
   renderSup(true);
@@ -2415,10 +2426,100 @@ function supOutBind(){
       if (a === 'part') supOutSet(sid, {status:'상차완료', part:true});
       if (a === 'undo') supOutSet(sid, {status:'대기', part:false});
       if (a === 'print') supOutPrint(plan);
-      if (a === 'loadall'){const ready = plan.filter(p => p.ready && supOutState(p.sid).status !== '상차완료');if (!ready.length){toast('입고가 끝나 상차할 수 있는 학교가 없습니다.');return;}ready.forEach(p => {SUP.ship[supOutKey(p.sid)] = {status:'상차완료', part:false, sid:p.sid, date:SUP.date, at:Date.now(), kind:'out'};if (DB) DB.doc('sup_ship/' + supOutKey(p.sid)).set(SUP.ship[supOutKey(p.sid)]).catch(() => {});});if (!DB) store.set('supShip', SUP.ship);toast(`${ready.length}개 학교 상차를 확인했습니다.`);renderSup(true);}
+      if (a === 'loadall'){const ready = plan.filter(p => p.ready && supOutState(p.sid).status !== '상차완료');if (!ready.length){toast('입고가 끝나 상차할 수 있는 학교가 없습니다.');return;}ready.forEach(p => {if (SUP.date === TODAY) supLinkDel(p.sid, true);SUP.ship[supOutKey(p.sid)] = {status:'상차완료', part:false, sid:p.sid, date:SUP.date, at:Date.now(), kind:'out'};if (DB) DB.doc('sup_ship/' + supOutKey(p.sid)).set(SUP.ship[supOutKey(p.sid)]).catch(() => {});});if (!DB) store.set('supShip', SUP.ship);toast(`${ready.length}개 학교 상차를 확인했습니다.`);renderSup(true);}
       return;}
     const r = e.target.closest('[data-supopen]');if (r){SUP.open = SUP.open === r.dataset.supopen ? null : r.dataset.supopen;renderSup(true);}
   });
+}
+
+/* ---------- 일일 관리: 하루 운영 기록을 DB에 날짜별로 저장 ----------
+   daily/{날짜}   하루 요약 (배송·차량·입출고·온도·경보·IoT)
+   del_day/{날짜} 그날 배송 건별 기록
+   odo_day/{날짜} 차량별 운행 거리
+   공유 DB가 있으면 관리자 화면이 5분마다 자동 저장하고, '일일 마감'을 누르면 마감 표시와 함께 확정 저장한다.
+   DB가 없는 사이트에서는 이 브라우저에 같은 형태로 저장한다. */
+const DAY = {list:{}, sel:TODAY, lastSave:Date.now() - 4 * 60e3, busy:false, _tk:0};
+function dayLocalGet(){try{return JSON.parse(localStorage.getItem('gfl:daily') || '{}');}catch(e){return {};}}
+function dayLocalSet(o){try{const ks = Object.keys(o).sort();while (ks.length > 60) delete o[ks.shift()];localStorage.setItem('gfl:daily', JSON.stringify(o));}catch(e){}}
+function buildDaily(date){
+  const ds = DEL.filter(d => d.date === date);const by = {};ds.forEach(d => by[d.status] = (by[d.status] || 0) + 1);
+  const legs = ds.map(d => d.leg).filter(x => x != null);const late = legs.filter(x => x > CFG.legLimit).length;
+  const course = {};COURSES.forEach(c => {const cd = ds.filter(d => COURSE_OF[d.sid] === c.id);course[c.id] = {n:cd.length, done:cd.filter(d => d.status === '인수완료').length, late:cd.filter(d => d.leg != null && d.leg > CFG.legLimit).length, km:+courseKm(c.id).toFixed(1)};});
+  const peak = ds.map(d => d.sens?.peakT).filter(x => x != null);
+  const odo = {};VEH.forEach(v => {const k = date === TODAY ? odoOf(v).km : (ODO.hist[date]?.[v.id] || 0);if (k > .05) odo[v.id] = +k.toFixed(1);});
+  const all = supAgg();const sts = all.map(g => (SUP.ship[supKey(date, g.name)] || {}).status || '발주접수');
+  const shortItems = all.reduce((a, g) => {const st = SUP.ship[supKey(date, g.name)];if (!st) return a;return a + g.items.filter(it => {const x = st.items?.[it.code || it.name];return x && ((x.out != null && x.out < it.qty) || (x.rcv != null && x.rcv < it.qty) || x.bad);}).length;}, 0);
+  const outs = Object.values(SUP.ship).filter(o => o.kind === 'out' && o.date === date);
+  const hot = typeof hotAll === 'function' ? hotAll().filter(r => r.date === date) : [];
+  const iq = VEH.flatMap(v => (v.iot?.q || []).filter(c => new Date(c.at).toISOString().slice(0, 10) === date || date === TODAY));
+  return {date, at:Date.now(), by:UID || null,
+    del:{total:ds.length, done:by['인수완료'] || 0, byStatus:by, late, avgLeg:legs.length ? +(legs.reduce((a, b) => a + b, 0) / legs.length).toFixed(1) : null, peakMax:peak.length ? +Math.max(...peak).toFixed(1) : null},
+    course, veh:{km:+Object.values(odo).reduce((a, b) => a + b, 0).toFixed(1), n:Object.keys(odo).length, odo},
+    sup:{suppliers:all.length, shipped:sts.filter(s => s === '출고확정' || s === '입고완료').length, received:sts.filter(s => s === '입고완료').length, short:shortItems, schoolsOut:outs.filter(o => o.status === '상차완료').length},
+    hot:{n:hot.length, open:hot.filter(r => r.status === '미확인').length},
+    alerts:{n:ALERTS.length, crit:ALERTS.filter(a => a.sev === 'crit').length, open:ALERTS.filter(a => !a.ack && a.sev !== 'info').length},
+    iot:{n:iq.length, ok:iq.filter(c => c.status === '완료').length, fail:iq.filter(c => c.status === '실패').length},
+    temp:{avg:+(VEH.filter(v => v.region === '홍천군').reduce((a, v) => a + v.temp, 0) / Math.max(1, VEH.filter(v => v.region === '홍천군').length)).toFixed(1)}};
+}
+async function saveDaily(close){
+  if (DAY.busy) return;DAY.busy = true;
+  try{
+    const date = TODAY;const sum = buildDaily(date);const prev = DAY.list[date];if (prev?.closed && !close){sum.closed = prev.closed;sum.closedAt = prev.closedAt;}
+    if (close){sum.closed = true;sum.closedAt = Date.now();}
+    const rows = DEL.filter(d => d.date === date).map(d => [d.id, d.sid, d.meal, d.status, d.veh || '', d.depart ?? null, d.arrive ?? null, d.done ?? null, d.leg != null ? +d.leg.toFixed(1) : null, d.sens?.peakT != null ? +d.sens.peakT.toFixed(1) : null, d.loaded ? 1 : 0]);
+    if (DB && DA.adminView){
+      await DB.doc('daily/' + date).set(sum);await DB.doc('del_day/' + date).set({date, at:Date.now(), keys:['id', 'sid', 'meal', 'status', 'veh', 'depart', 'arrive', 'done', 'leg', 'peakT', 'loaded'], rows});await DB.doc('odo_day/' + date).set({date, at:Date.now(), odo:sum.veh.odo});
+    } else if (!DB){const o = dayLocalGet();o[date] = Object.assign(sum, {rows});dayLocalSet(o);DAY.list[date] = o[date];}
+    else {DAY.busy = false;return false;}
+    DAY.list[date] = Object.assign(DAY.list[date] || {}, sum);DAY.lastSave = Date.now();
+    if (close) toast(`${date} 일일 마감을 저장했습니다.`);
+    if (view === 'day') renderDay(true);
+    return true;
+  }catch(e){toast('일일 기록 저장 실패: ' + (e.code || e.message));return false;}
+  finally{DAY.busy = false;}
+}
+function dayAutoTick(){if (Date.now() - DAY.lastSave > 5 * 60e3 && (!DB || DA.adminView)) saveDaily(false);}
+function dayDbInit(){
+  if (!DB){DAY.list = dayLocalGet();return;}
+  DB.collection('daily').limit(400).onSnapshot(sn => {sn.docs.forEach(d => DAY.list[d.id] = d.data());if (view === 'day') renderDay(true);}, e => {});
+}
+async function dayRows(date){
+  if (date === TODAY) return DEL.filter(d => d.date === date).map(d => ({id:d.id, sid:d.sid, meal:d.meal, status:d.status, veh:d.veh, depart:d.depart, arrive:d.arrive, done:d.done, leg:d.leg, peakT:d.sens?.peakT, loaded:d.loaded}));
+  let doc = null;
+  if (DB){try{const sn = await DB.doc('del_day/' + date).get();doc = sn.exists ? sn.data() : null;}catch(e){}}
+  else doc = DAY.list[date] && {keys:['id', 'sid', 'meal', 'status', 'veh', 'depart', 'arrive', 'done', 'leg', 'peakT', 'loaded'], rows:DAY.list[date].rows || []};
+  if (!doc) return [];return doc.rows.map(r => Object.fromEntries(doc.keys.map((k, i) => [k, r[i]])));
+}
+async function renderDay(force){
+  if (view !== 'day') return;
+  const dates = Object.keys(DAY.list).concat([TODAY]).filter((x, i, a) => a.indexOf(x) === i).sort().reverse();
+  const sel = $('#daySel');const opts = dates.map(d => `<option value="${d}" ${d === DAY.sel ? 'selected' : ''}>${d}${d === TODAY ? ' (오늘)' : ''}${DAY.list[d]?.closed ? ' · 마감' : ''}</option>`).join('');
+  if (sel.dataset.o !== opts){sel.innerHTML = opts;sel.dataset.o = opts;}
+  const s = DAY.sel === TODAY ? Object.assign(buildDaily(TODAY), {closed:DAY.list[TODAY]?.closed}) : DAY.list[DAY.sel];
+  $('#dayStatus').innerHTML = DB ? (DA.adminView ? `공유 DB 저장 · 자동 저장 5분마다${DAY.lastSave ? ' · 마지막 저장 ' + new Date(DAY.lastSave).toLocaleTimeString('ko-KR') : ''}` : '공유 DB 읽기 전용 (저장은 관리자만)') : '이 브라우저에 저장 (시연 사이트)';
+  if (!s){$('#dayKpi').innerHTML = '';$('#dayBody').innerHTML = '<div class="panel"><div class="pb muted">이 날짜의 저장된 기록이 없습니다.</div></div>';return;}
+  $('#dayKpi').innerHTML = kpi('배송 완료', s.del.done, '/ ' + s.del.total, s.closed ? '마감됨' : DAY.sel === TODAY ? '진행 중' : '저장본', s.del.total && s.del.done === s.del.total ? 'ok' : '') +
+    kpi('30분 초과', s.del.late, '건', '평균 구간 ' + (s.del.avgLeg ?? '-') + '분', s.del.late ? 'warn' : 'ok') + kpi('총 운행', fmt1(s.veh.km), 'km', s.veh.n + '대 운행') +
+    kpi('입고 완료', s.sup.received, '/ ' + s.sup.suppliers, '공급업체 · 결품 ' + s.sup.short + '건', s.sup.short ? 'warn' : '') + kpi('센터 출고', s.sup.schoolsOut, '교', '학교별 상차') +
+    kpi('하차 고온', s.hot.n, '건', '미확인 ' + s.hot.open, s.hot.n ? 'warn' : 'ok') + kpi('경보', s.alerts.n, '건', '심각 ' + s.alerts.crit, s.alerts.crit ? 'crit' : '');
+  const rows = await dayRows(DAY.sel);
+  const crs = COURSES.map(c => {const x = s.course?.[c.id] || {};return `<tr><td><b>${c.id}</b> ${esc(c.name)}</td><td>${c.veh}</td><td class="n mono">${x.done ?? 0}/${x.n ?? 0}</td><td class="n mono ${x.late ? 'crit-t' : ''}">${x.late ?? 0}</td><td class="n mono">${x.km ?? '-'}km</td><td class="n mono">${fmt1(s.veh.odo?.[c.veh] || 0)}km</td></tr>`;}).join('');
+  const odo = Object.entries(s.veh.odo || {}).sort((a, b) => b[1] - a[1]);
+  const trendD = Object.keys(DAY.list).concat([TODAY]).filter((x, i, a) => a.indexOf(x) === i).sort().slice(-30);
+  const T = d => d === TODAY ? buildDaily(TODAY) : DAY.list[d];
+  $('#dayBody').innerHTML = `<div class="grid2 even">
+    <div class="panel"><div class="ph"><h3>코스별 결과</h3><span class="sub">${DAY.sel}</span></div><div class="tw"><table class="t"><thead><tr><th>코스</th><th>차량</th><th class="n">인수완료</th><th class="n">30분 초과</th><th class="n">계획 거리</th><th class="n">실제 운행</th></tr></thead><tbody>${crs}</tbody></table></div></div>
+    <div class="panel"><div class="ph"><h3>차량별 운행 거리</h3></div><div class="tw scroll" style="max-height:300px"><table class="t"><thead><tr><th>차량</th><th>기사</th><th class="n">운행</th></tr></thead><tbody>${odo.map(([id, k]) => `<tr><td><b>${id}</b></td><td class="small">${esc(VID(id)?.driver || '-')}</td><td class="n mono">${fmt1(k)} km</td></tr>`).join('') || '<tr><td colspan="3" class="muted small">운행 기록 없음</td></tr>'}</tbody></table></div></div></div>
+    <div class="panel" style="margin-top:16px"><div class="ph"><h3>배송 건별 기록</h3><span class="sub">${rows.length}건</span><div class="r"><button class="btn sm" data-day="csv">CSV</button></div></div><div class="tw scroll" style="max-height:420px"><table class="t"><thead><tr><th>식사</th><th>코스</th><th>학교</th><th>차량</th><th>상태</th><th class="n">출발</th><th class="n">도착</th><th class="n">완료</th><th class="n">구간(분)</th><th class="n">하차 최고</th><th>센터 출고</th></tr></thead><tbody>${rows.sort((a, b) => (a.meal + COURSE_OF[a.sid] + a.sid).localeCompare(b.meal + COURSE_OF[b.sid] + b.sid)).map(r => `<tr><td>${esc(r.meal)}</td><td><span class="tag">${COURSE_OF[r.sid] || '-'}</span></td><td>${esc(SCH[r.sid]?.name || r.sid)}</td><td class="small">${esc(r.veh || '-')}</td><td>${delPill(r.status)}</td><td class="n mono">${r.depart != null ? hhmm(r.depart) : '-'}</td><td class="n mono">${r.arrive != null ? hhmm(r.arrive) : '-'}</td><td class="n mono">${r.done != null ? hhmm(r.done) : '-'}</td><td class="n mono ${r.leg > CFG.legLimit ? 'crit-t' : ''}">${r.leg != null ? fmt1(r.leg) : '-'}</td><td class="n mono ${r.peakT >= CFG.hotPeak ? 'crit-t' : ''}">${r.peakT != null ? fmt1(r.peakT) + '°C' : '-'}</td><td>${r.loaded ? '<span class="pill ok">상차</span>' : '<span class="small muted">-</span>'}</td></tr>`).join('') || '<tr><td colspan="11" class="muted small">기록 없음</td></tr>'}</tbody></table></div></div>
+    <div class="panel" style="margin-top:16px"><div class="ph"><h3>일별 추이 (최근 30일)</h3><span class="sub">저장된 날짜 기준 · 날짜를 누르면 그날 기록으로 이동</span></div><div class="tw scroll" style="max-height:360px"><table class="t"><thead><tr><th>날짜</th><th class="n">배송 완료</th><th class="n">30분 초과</th><th class="n">총 운행(km)</th><th class="n">입고 완료</th><th class="n">결품</th><th class="n">하차 고온</th><th class="n">경보</th><th>마감</th></tr></thead><tbody>${trendD.slice().reverse().map(d => {const x = T(d);if (!x) return '';return `<tr data-dayd="${d}" style="cursor:pointer" class="${d === DAY.sel ? 'sel' : ''}"><td class="mono">${d}${d === TODAY ? ' <span class="pill info">오늘</span>' : ''}</td><td class="n mono">${x.del.done}/${x.del.total}</td><td class="n mono ${x.del.late ? 'crit-t' : ''}">${x.del.late}</td><td class="n mono">${fmt1(x.veh.km)}</td><td class="n mono">${x.sup.received}/${x.sup.suppliers}</td><td class="n mono">${x.sup.short}</td><td class="n mono">${x.hot.n}</td><td class="n mono">${x.alerts.n}</td><td>${x.closed ? '<span class="pill ok">마감</span>' : '<span class="small muted">-</span>'}</td></tr>`;}).join('')}</tbody></table></div></div>`;
+  DAY._rows = rows;
+}
+function dayBind(){
+  $('#daySel').addEventListener('change', e => {DAY.sel = e.target.value;renderDay(true);});
+  $('#daySave').onclick = () => saveDaily(false).then(ok => ok && toast('오늘 기록을 저장했습니다.'));
+  $('#dayClose').onclick = () => saveDaily(true);
+  $('#dayBody').addEventListener('click', e => {const r = e.target.closest('[data-dayd]');if (r){DAY.sel = r.dataset.dayd;renderDay(true);window.scrollTo({top:0, behavior:'smooth'});return;}
+    if (e.target.closest('[data-day="csv"]')) saveCsv(`배송기록_${DAY.sel}.csv`, DAY.sel + ' 배송 기록', [['날짜', '식사', '코스', '학교', '차량', '상태', '출발', '도착', '완료', '구간(분)', '하차 최고(°C)', '센터 출고'], ...(DAY._rows || []).map(r => [DAY.sel, r.meal, COURSE_OF[r.sid] || '', SCH[r.sid]?.name || r.sid, r.veh || '', r.status, r.depart != null ? hhmm(r.depart) : '', r.arrive != null ? hhmm(r.arrive) : '', r.done != null ? hhmm(r.done) : '', r.leg != null ? fmt1(r.leg) : '', r.peakT != null ? fmt1(r.peakT) : '', r.loaded ? 'Y' : ''])]);});
 }
 
 /* ---------- IoT 단말·블루투스 온습도계 원격 제어 ----------
@@ -3014,7 +3115,7 @@ let dbReadyResolve;const DB_READY = new Promise(r => dbReadyResolve = r);
 async function initDb(){
   try{DB = await window.claude?.use?.('db');}catch(e){DB = null;}
   try{USER = await window.claude?.use?.('user');UID = USER ? await USER.id() : null;}catch(e){USER = null;}
-  if (!DB){dbBadge('보기 전용 · 공유 DB 없음', 'warn');daRender();renderAcct();dbReadyResolve();
+  if (!DB){dayDbInit();dbBadge('보기 전용 · 공유 DB 없음', 'warn');daRender();renderAcct();dbReadyResolve();
     // 독립 웹사이트(급식.shop)에서는 최근 umji 출고 스냅샷을 읽어 보여 준다
     try{const r = await fetch('data/ship-latest.json', {cache:'no-store'});if (r.ok){const j = await r.json();SHIP.batches = j.batches || {};SHIP.rows = j.rows || {};renderShip();}}catch(e){}
     try{const r = await fetch('data/orders-demo.json', {cache:'no-store'});if (r.ok){const j = await r.json();Object.entries(j).forEach(([k, o]) => STD.orders[k] = Object.assign({example:true}, o));ordDirty = true;daRender(true);}}catch(e){}
@@ -3025,7 +3126,7 @@ async function initDb(){
   DB.collection('orders').limit(200).onSnapshot(sn => {STD.orders = {};sn.docs.forEach(d => STD.orders[d.id] = d.data());if (drawer?.sid){ordDirty = true;renderDrawer(false);}daRender(true);}, e => {});
   try{DA.adminView = USER ? await USER.canEdit() : false;}catch(e){}
   DB.collection('unload_hot').limit(1000).onSnapshot(sn => {HOT.rows = {};sn.docs.forEach(d => HOT.rows[d.id] = d.data());if (view === 'veh') renderHot(true);}, e => {});
-  iotDbInit();supDbInit();initDriverDb();daRender();renderAcct();dbReadyResolve();
+  iotDbInit();supDbInit();dayDbInit();initDriverDb();daRender();renderAcct();dbReadyResolve();
 }
 async function dbWrite(fn, okMsg){
   if (!DB){toast('공유 DB에 연결되지 않아 저장할 수 없습니다. Claude에서 이 페이지를 열어 주세요.');return false;}
@@ -3130,7 +3231,8 @@ document.addEventListener('toggle', e => {const f = e.target?.dataset?.fold;if (
 function inlineFood(d){
   const lines = STD.orders[d.sid]?.lines || [];const v = d.veh ? VID(d.veh) : null;const chk = d.checked || {};
   if (!lines.length) return '<div class="small muted">배송 식자재가 아직 없습니다. 위 "식자재 발주 품목"에서 추가하면 여기에 표시됩니다.</div>';
-  return `<details class="food-in" data-fold="${d.id}" ${FOLD.has(d.id) ? '' : 'open'}><summary>배송 식자재 ${lines.length}개 품목 · 검수 ${lines.filter(l => chk[l.code]).length}/${lines.length}</summary><div class="tw"><table class="t"><thead><tr><th>상품명</th><th>보관</th><th class="n">수량</th><th>운송 온도</th></tr></thead><tbody>${lines.map(l => {const lc = lineCheck(l, v);return `<tr><td style="min-width:170px"><button class="sname" data-std="${esc(l.code)}">${esc(l.name)}</button><div class="small muted">${esc(l.spec || '')}</div></td><td><span class="st-tag st-${esc(l.storage)}">${esc(l.storage)}</span></td><td class="n">${l.qty ?? 0} <span class="small muted">${esc(l.ou || '')}</span></td><td><span class="pill ${lc.ok ? 'ok' : 'crit'}">${lc.txt}</span></td></tr>`;}).join('')}</tbody></table></div><button class="btn sm" data-dlist="${d.id}" style="margin-top:6px">전체 목록 · 검수</button></details>`;
+  const al = supSchoolAlloc(d.sid);const sh = lines.filter(l => al[l.code] != null && al[l.code] < (l.qty || 0));
+  return `<details class="food-in" data-fold="${d.id}" ${FOLD.has(d.id) ? '' : 'open'}><summary>배송 식자재 ${lines.length}개 품목 · 검수 ${lines.filter(l => chk[l.code]).length}/${lines.length}${d.loaded ? ' · 센터 상차완료' : ''}${sh.length ? ` · <span style="color:var(--crit)">결품 ${sh.length}</span>` : ''}</summary>${sh.length ? `<div class="small" style="color:var(--crit);margin:4px 0">결품·부족: ${sh.map(l => esc(l.name.replace(/^\[[^\]]+\]/, '')) + ' ' + al[l.code] + '/' + l.qty).join(', ')} (센터 입고 수량 기준)</div>` : ''}<div class="tw"><table class="t"><thead><tr><th>상품명</th><th>보관</th><th class="n">수량</th><th>운송 온도</th></tr></thead><tbody>${lines.map(l => {const lc = lineCheck(l, v);return `<tr><td style="min-width:170px"><button class="sname" data-std="${esc(l.code)}">${esc(l.name)}</button><div class="small muted">${esc(l.spec || '')}</div></td><td><span class="st-tag st-${esc(l.storage)}">${esc(l.storage)}</span></td><td class="n">${l.qty ?? 0} <span class="small muted">${esc(l.ou || '')}</span></td><td><span class="pill ${lc.ok ? 'ok' : 'crit'}">${lc.txt}</span></td></tr>`;}).join('')}</tbody></table></div><button class="btn sm" data-dlist="${d.id}" style="margin-top:6px">전체 목록 · 검수</button></details>`;
 }
 function foodBtn(d){const n = (STD.orders[d.sid]?.lines || []).length;return `<button class="btn sm ${n ? '' : 'ghost'}" data-dlist="${d.id}" title="배송 식자재 목록">${n ? '식자재 ' + n + '개' : '식자재 없음'}</button>`;}
 function lineCheck(l, v){
@@ -3283,6 +3385,7 @@ function show(v){
   if (v === 'std') renderStd();
   if (v === 'acct') renderAcct();
   if (v === 'ship') renderShip();
+  if (v === 'day') renderDay(true);
   if (v === 'sup'){$('#supDate').value = SUP.date;renderSup(true);}
   if (v === 'gis') renderGis(false);
   if (v === 'cfg') renderCfg();
@@ -3295,6 +3398,7 @@ function refresh(){
   if (view === 'wide') renderWide();
   if (view === 'hub') renderHub();
   if (view === 'veh'){renderVehList();renderVehDetail(false);renderHot(false);renderOdo(false);}
+  if (typeof dayAutoTick === 'function') dayAutoTick();if (view === 'day' && ++DAY._tk % 10 === 0) renderDay(false);
   if (view === 'del' && !document.activeElement?.matches?.('#delTbl select') && !$('#delTbl .confirm')){
     const sig = DEL.map(d => d.id + d.status + d.veh).join('|') + '#' + Object.entries(STD.orders).map(([k, o]) => k + (o.lines || []).length + (o.at || '')).join('|') + Object.keys(STD.center).length;if (sig !== refresh._sig){refresh._sig = sig;renderDelTable();}
   }
@@ -3442,7 +3546,7 @@ function bind(){
   $('#optReset').onclick = () => {store.set('optPlan', {});COURSES.forEach(c => relayState[c.id] = !!c.relay);store.set('relay', relayState);planAll();COURSES.forEach(c => {if (PLAN[c.id]) delete PLAN[c.id]._road;});renderGis(true);renderOpt();toast('기본 코스 순서로 되돌렸습니다.');};
   $('#optTbl').addEventListener('click', e => {const v = e.target.closest('[data-optv]');if (v){optView = optView === v.dataset.optv ? null : v.dataset.optv;renderOpt();drawOptLine();return;}const a = e.target.closest('[data-opta]');if (a) applyOpt([a.dataset.opta]);});
   $('#odoCsv').onclick = odoCsv;
-  supBind();supOutBind();
+  supBind();supOutBind();dayBind();
   $('#odoTbl').addEventListener('click', e => {const r = e.target.closest('[data-veh]');if (!r) return;selVeh = r.dataset.veh;renderVehList();renderVehDetail(true);window.scrollTo({top:0, behavior:'smooth'});});
   $('#optimize').onclick = () => {planAll();optimizeAll();renderOpt();renderGis(false);const bad = Object.values(PLAN).reduce((a, p) => a + p.bad, 0);toast(`6개 코스를 다시 계산했습니다. 30분 초과 구간 ${bad}개`);};
   $('#applyRoute').onclick = () => {buildHistory();toast('새 방문 순서를 다음 출발부터 적용합니다.');};
