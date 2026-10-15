@@ -1,0 +1,41 @@
+name: Android 기사 앱 빌드
+on:
+  push:
+    paths: ['android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.9'}
+      - name: 서명 키 준비 (저장소 Secrets에 있으면 사용)
+        env: {KS_B64: '${{ secrets.ANDROID_KEYSTORE_B64 }}'}
+        run: |
+          if [ -n "$KS_B64" ]; then echo "$KS_B64" | base64 -d > $RUNNER_TEMP/release.jks; echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> $GITHUB_ENV; fi
+      - name: APK 빌드
+        env:
+          KEYSTORE_PASSWORD: '${{ secrets.ANDROID_KEYSTORE_PASSWORD }}'
+          KEY_ALIAS: '${{ secrets.ANDROID_KEY_ALIAS }}'
+          KEY_PASSWORD: '${{ secrets.ANDROID_KEY_PASSWORD }}'
+        run: gradle -p android assembleRelease --no-daemon --stacktrace
+      - name: 파일 이름 정리
+        run: cp android/app/build/outputs/apk/release/app-release.apk gwfood-driver.apk && ls -la gwfood-driver.apk
+      - uses: actions/upload-artifact@v4
+        with: {name: gwfood-driver, path: gwfood-driver.apk}
+      - name: 다운로드용 릴리스 갱신
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-latest
+          name: 먹거리 이음 기사 앱 (안드로이드)
+          body: |
+            강원 먹거리 이음 배송 기사용 안드로이드 앱. 빌드 번호 ${{ github.run_number }} · ${{ github.sha }}
+            설치: 휴대폰에서 gwfood-driver.apk를 내려받아 열고, '출처를 알 수 없는 앱 설치'를 허용하세요.
+          files: gwfood-driver.apk
+          make_latest: true

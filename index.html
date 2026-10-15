@@ -2622,7 +2622,27 @@ function iotDriverRelay(){
 /* ---- 실제 블루투스 온습도계 (Web Bluetooth · 기사 휴대폰/단말 브라우저) ---- */
 const BT_ESS = 0x181a, BT_TEMP = 0x2a6e, BT_HUM = 0x2a6f;
 const BT_MI = 'ebe0ccb0-7a0a-4b0c-8a1a-6ff2997da3a6', BT_MI_DATA = 'ebe0ccc1-7a0a-4b0c-8a1a-6ff2997da3a6';
+// 안드로이드 기사 앱: 앱이 블루투스 검색·연결을 맡고 측정값을 window.__ble 로 넘겨준다
+const IN_APP = /GwFoodDriver/.test(navigator.userAgent) && !!window.AndroidBLE;
+const APK_URL = 'https://github.com/ochangmin/gangwon-food-hongcheon/releases/download/android-latest/gwfood-driver.apk';
+window.__ble = raw => {
+  let e;try{e = JSON.parse(raw);}catch(x){return;}
+  const d = myDriver();const v = d && VID(d.veh);if (!v) return;const I = iotOf(v);
+  if (e.type === 'error'){toast(e.msg);return;}
+  if (e.type === 'scanning'){toast('주변 블루투스 온습도계를 찾는 중… (6초)');return;}
+  let s = I.ble.find(x => x.btId === e.id);
+  if (!s && (e.type === 'connecting' || e.type === 'connected' || e.type === 'data')){s = {id:v.id + '-BT' + (I.ble.length + 1), mac:e.id, btId:e.id, name:(e.name || '블루투스 온습도계') + ' (실측)', model:e.name || 'BLE', bias:0, conn:false, rssi:null, batt:null, interval:30, offT:0, offH:0, tLo:CFG.tMin, tHi:CFG.tMax, hHi:CFG.hMax, t:null, h:null, last:null, src:'실제 센서 (앱)'};I.ble.unshift(s);}
+  if (!s) return;
+  if (e.type === 'connected'){s.conn = true;IOT.real[s.id] = {app:true, btId:e.id};toast(s.name + ' 연결됨');}
+  if (e.type === 'disconnected'){s.conn = false;delete IOT.real[s.id];toast(s.name + ' 연결이 끊겼습니다.');}
+  if (e.type === 'data'){
+    if (e.batt != null) s.batt = e.batt;if (e.t != null){s.t = +(e.t + s.offT).toFixed(2);v.temp = s.t;v.realT = Date.now();}if (e.h != null){s.h = Math.round(clamp(e.h + s.offH, 0, 100));v.hum = s.h;}s.last = SIM;s.conn = true;
+    const now = Date.now();if (DB && !DA.demo && (!s._sent || now - s._sent > s.interval * 1000)){s._sent = now;DB.doc('iot_tel/' + v.id).set({t:s.t, h:s.h, batt:s.batt, at:now, name:s.name, sensor:s.id, by:d.id}).catch(() => {});}
+  }
+  daRender(true);
+};
 async function btConnect(v){
+  if (IN_APP){try{window.AndroidBLE.pick();}catch(e){toast('앱 블루투스 연결 실패: ' + e.message);}return;}
   if (!navigator.bluetooth){toast('이 브라우저는 블루투스 연결을 지원하지 않습니다. 안드로이드 크롬에서 급식.shop으로 열어 주세요.');return;}
   let dev;
   try{dev = await navigator.bluetooth.requestDevice({filters:[{services:[BT_ESS]}, {namePrefix:'LYWSD'}, {namePrefix:'ATC_'}, {namePrefix:'MJ_HT'}, {namePrefix:'TH'}], optionalServices:[BT_ESS, BT_MI, 'battery_service']});}
@@ -2651,7 +2671,7 @@ async function btConnect(v){
   }catch(e){s.conn = false;toast('센서 연결 실패: ' + e.message);}
   daRender(true);
 }
-function btDisconnect(sid){const r = IOT.real[sid];if (r){try{r.gatt.disconnect();}catch(e){}delete IOT.real[sid];}}
+function btDisconnect(sid){const r = IOT.real[sid];if (r && r.app){try{window.AndroidBLE.disconnect(r.btId);}catch(e){}delete IOT.real[sid];return;}if (r){try{r.gatt.disconnect();}catch(e){}delete IOT.real[sid];}}
 /* ---- 관제 화면 렌더 ---- */
 function iotStepsHtml(c){
   const fail = c.status === '실패';
@@ -2733,7 +2753,7 @@ function daIotCards(v){
       <span class="mono" style="text-align:right;${al === 'crit' ? 'color:var(--crit)' : ''}"><b>${s.t != null ? fmt1(s.t) + '°C' : '-'}</b><br><span class="small">${s.h != null ? s.h + '%' : '-'}</span></span>
       ${IOT.real[s.id] ? `<button class="btn sm" data-da="btoff" data-id="${esc(s.id)}">끊기</button>` : ''}</div>`;}).join('')}
     <button class="btn pri" style="width:100%;margin-top:10px" data-da="btscan">실제 센서 연결 (블루투스)</button>
-    <div class="small muted" style="margin-top:6px">안드로이드 크롬에서 급식.shop으로 열면 휴대폰이 단말 역할을 하며 블루투스 온습도계(환경센서 0x181A, 샤오미 LYWSD03 등) 값을 직접 받아 관제로 보냅니다.</div></div>
+    <div class="small muted" style="margin-top:6px">${IN_APP ? '기사 앱이 블루투스로 센서에 연결해' : '기사 앱(APK) 또는 안드로이드 크롬에서 급식.shop으로 열면 휴대폰이 단말 역할을 하며'} 블루투스 온습도계(환경센서 0x181A, 샤오미 LYWSD03 등) 값을 직접 받아 관제로 보냅니다.</div></div>
     <div class="da-card"><b>관제 명령</b> ${pend.length ? `<span class="pill info">${pend.length}건 처리 중</span>` : ''}
       ${I.q.slice(0, 6).map(c => `<div style="border-top:1px solid var(--line);padding-top:6px;margin-top:6px"><div class="row small" style="justify-content:space-between"><b>${esc(c.label)}</b><span class="pill ${c.status === '완료' ? 'ok' : c.status === '실패' ? 'crit' : 'info'}">${esc(c.status)}</span></div>${iotStepsHtml(c)}${c.result ? `<div class="small muted">${esc(c.result)}</div>` : ''}</div>`).join('') || '<div class="small muted">관제에서 받은 명령이 없습니다.</div>'}
       <label class="switch" style="margin-top:8px"><input type="checkbox" data-da2="relay" ${IOT.relayAuto ? 'checked' : ''}>관제 명령 자동 중계</label></div>`;
@@ -3730,7 +3750,7 @@ function daRender(soft){
 }
 function daLogin(){
   const signedIn = !!UID;const list = driverList();const mine = UID ? DA.claims[UID] : null;
-  let h = `<div class="da-hero"><h2>기사 로그인</h2><p>센터에서 받은 아이디와 비밀번호로 로그인하세요.</p></div>` + loginForm();
+  let h = `<div class="da-hero"><h2>기사 로그인</h2><p>센터에서 받은 아이디와 비밀번호로 로그인하세요.</p></div>` + loginForm() + (IN_APP ? '' : `<div class="da-card"><b>안드로이드 기사 앱</b><p class="small" style="margin:4px 0 8px">앱으로 설치하면 휴대폰이 차량 단말 역할을 해 블루투스 온습도계 값을 바로 관제로 보냅니다.</p><a class="btn pri" style="width:100%;justify-content:center" href="${APK_URL}" rel="noopener">앱 내려받기 (APK)</a><p class="small muted" style="margin-top:6px">받은 파일을 열고 '출처를 알 수 없는 앱 설치'를 허용하면 설치됩니다.</p></div>`);
   if (!DB) return h + `<div class="da-card warn"><b>시연 모드</b><p class="small">이 화면은 저장 없이 둘러보는 시연용입니다. 아래에서 기사를 골라 화면을 확인할 수 있습니다.</p></div>` + daDemoPick(list);
   h += daDemoPick(list, true);
   setTimeout(daFillMe, 0);
