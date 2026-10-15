@@ -1027,6 +1027,7 @@ body.driver-mode{background:#EEF2F5}
     <div class="top-right">
       <span class="demo-tag">시연 데이터</span>
       <button class="btn sm" type="button" id="goDriver">기사 앱</button>
+      <span id="rtSlot"></span>
       <span class="clock" id="clock">--</span>
       <button class="btn sm" id="simToggle" type="button">일시정지</button>
       <label class="switch small" title="배송 회차·센서 이벤트·기사 운행 기록을 계속 만들어 냅니다"><input type="checkbox" id="autoGen" checked>자동 생성</label>
@@ -1297,6 +1298,7 @@ POST /api/deliveries/{배송ID}/events
   </div>
 </section>
 </main>
+<div class="sup-doc" id="rtModal" hidden></div>
 <footer class="org-foot" id="orgFoot"><div class="of-l"><img class="org-logo" data-org-logo alt="" hidden><span id="orgName">강원 먹거리 이음 · 홍천 학교급식 스마트 물류 시연</span></div><div class="of-r"><img class="org-logo" data-org-logo alt="" hidden></div></footer>
 <div class="toast" id="toast" role="status"></div>
 <div id="modalRoot"></div>
@@ -2231,6 +2233,7 @@ async function supLogin(id, pw){
   const msg = $('#supLgMsg');const show = t => {msg.textContent = t;};
   id = id.trim().toLowerCase();if (!id || !pw){show('아이디와 비밀번호를 입력하세요.');return;}
   const g = supAgg().find(x => supId(x.name) === id);
+  if (!window.claude && RT.st?.configured){try{const j = await rtCall('auth', {op:'login', role:'sup', id, pw}, false);rtSave(j);try{sessionStorage.setItem('gfl:sup', JSON.stringify({id, sup:j.sup, exp:Date.now() + 12 * 3600e3}));}catch(e){}location.reload();}catch(e){show(e.message);}return;}
   if (!DB){if (g && pw === '1') return supSetSess(id, g.name);show('아이디 또는 비밀번호가 맞지 않습니다. 관리자에게 문의하세요.');return;}
   let a = SUP.auth[id];if (!a){try{const sn = await DB.doc('sup_auth/' + id).get();a = sn.exists ? sn.data() : null;}catch(e){}}
   let ok = false;if (a){try{ok = (await pwHash(pw, a.salt, a.iter)) === a.hash;}catch(e){}}
@@ -2238,7 +2241,7 @@ async function supLogin(id, pw){
   supSetSess(id, a.sup || g?.name || id);
 }
 function supSetSess(id, name){SUP.sess = {id, sup:name, exp:Date.now() + 12 * 3600e3};try{sessionStorage.setItem('gfl:sup', JSON.stringify(SUP.sess));}catch(e){}SUP.mode = 'sup';SUP.who = name;SUP.sel = name;$('#supMode').value = 'sup';toast(name + ' 계정으로 로그인했습니다.');renderSup(true);}
-function supLogout(){SUP.sess = null;try{sessionStorage.removeItem('gfl:sup');}catch(e){}SUP.who = '';renderSup(true);}
+function supLogout(){if (DB?.remote){rtClear();try{sessionStorage.removeItem('gfl:sup');}catch(e){}location.reload();return;}SUP.sess = null;try{sessionStorage.removeItem('gfl:sup');}catch(e){}SUP.who = '';renderSup(true);}
 async function supSetPw(id, name, pw){
   if (!pw || pw.length < 6){toast('비밀번호는 6자 이상으로 정하세요.');return;}
   if (!DB){toast('공유 DB가 없는 시연 화면에서는 비밀번호를 저장할 수 없습니다. (시연 비밀번호: 1)');return;}
@@ -3112,19 +3115,98 @@ function renderStd(resetPage){
 let DB = null, USER = null, UID = null;
 function dbBadge(t, cls){const b = $('#dbState');if (b){b.textContent = t;b.className = 'pill ' + cls;}}
 let dbReadyResolve;const DB_READY = new Promise(r => dbReadyResolve = r);
+/* ---------- 급식.shop 공유 DB (서버 /api) ----------
+   Claude 밖(급식.shop)에서 열면 서버 DB를 쓴다. 로그인한 역할(센터 관리자·공급업체·기사)에 따라 서버가 읽기·쓰기를 직접 막는다.
+   화면 코드는 Claude 공유 DB와 같은 모양(DB.doc / DB.collection…onSnapshot)으로 쓰도록 맞춘 어댑터. */
+const RT = {st:null, tok:null, info:null};
+try{const t = JSON.parse(localStorage.getItem('gfl:rt') || 'null');if (t && t.exp > Date.now()){RT.tok = t.token;RT.info = t;}}catch(e){}
+function rtSave(j){const o = Object.assign({}, j, {exp:Date.now() + 12 * 3600e3 - 60e3});try{localStorage.setItem('gfl:rt', JSON.stringify(o));}catch(e){}RT.tok = o.token;RT.info = o;}
+function rtClear(){try{localStorage.removeItem('gfl:rt');}catch(e){}RT.tok = null;RT.info = null;}
+async function rtCall(ep, payload, auth = true){
+  const r = await fetch('/api/' + ep, {method:'POST', headers:Object.assign({'Content-Type':'application/json'}, auth && RT.tok ? {Authorization:'Bearer ' + RT.tok} : {}), body:JSON.stringify(payload)});
+  let j = {};try{j = await r.json();}catch(e){}
+  if (r.status === 401 && auth && RT.tok && ep === 'db'){rtClear();toast('서버 로그인이 만료되었습니다. 다시 로그인해 주세요.');}
+  if (!r.ok){const e = new Error(j.error || ('HTTP ' + r.status));e.code = j.error === 'permission-denied' ? 'permission-denied' : j.error || r.status;e.why = j.why;throw e;}
+  return j;
+}
+async function rtStatus(){if (window.claude) return null;try{RT.st = await rtCall('auth', {op:'status'}, false);}catch(e){RT.st = {configured:false};}return RT.st;}
+function remoteDB(){
+  const subs = new Set();let bump = 0;
+  const kick = () => {bump++;subs.forEach(s => s.poll());};
+  const snapOf = docs => ({docs:docs.map(d => ({id:d.id, data:() => d.data, exists:true})), size:docs.length, empty:!docs.length});
+  function query(col, where, limit){
+    return {
+      where:(f, op, v) => query(col, [f, op, v], limit), limit:n => query(col, where, n), orderBy:() => query(col, where, limit),
+      get:async () => snapOf((await rtCall('db', {op:'list', col, where, limit})).docs),
+      onSnapshot(cb, err){
+        let alive = true, sig = '';
+        const s = {poll:async () => {if (!alive) return;try{const j = await rtCall('db', {op:'list', col, where, limit});const ns = JSON.stringify(j.docs);if (ns !== sig){sig = ns;cb(snapOf(j.docs));}}catch(e){if (err) err(e);}}};
+        subs.add(s);s.poll();const iv = setInterval(s.poll, 8000);
+        return () => {alive = false;clearInterval(iv);subs.delete(s);};
+      }
+    };
+  }
+  return {
+    remote:true,
+    collection:col => query(col, null, 500),
+    doc(path){
+      return {
+        get:async () => {const j = await rtCall('db', {op:'get', path});return {exists:!!j.exists, id:path.split('/')[1], data:() => j.data};},
+        set:async data => {await rtCall('db', {op:'set', path, data});kick();},
+        update:async data => {await rtCall('db', {op:'update', path, data});kick();},
+        delete:async () => {await rtCall('db', {op:'delete', path});kick();},
+        acquire:async () => ({acquired:false})
+      };
+    }
+  };
+}
+// 센터 관리자 로그인 창
+function rtLoginOpen(){
+  const st = RT.st || {};const box = $('#rtModal');
+  box.innerHTML = `<form class="panel" id="rtForm" style="max-width:420px;width:100%"><div class="ph"><h3>${st.hasAdmin ? '센터 관리자 로그인' : '센터 관리자 비밀번호 처음 설정'}</h3><span class="sub">급식.shop 공유 DB</span></div><div class="pb" style="display:flex;flex-direction:column;gap:10px">
+    ${st.hasAdmin ? '' : '<div class="small muted">처음 한 번만 정합니다. 8자 이상으로 정하고 센터 담당자만 알도록 보관하세요. 이후 공급업체·기사 비밀번호는 관리자 화면에서 정합니다.</div>'}
+    <label class="field">비밀번호<input class="in" id="rtPw" type="password" autocomplete="${st.hasAdmin ? 'current-password' : 'new-password'}"></label>
+    ${st.hasAdmin ? '' : '<label class="field">비밀번호 확인<input class="in" id="rtPw2" type="password" autocomplete="new-password"></label>'}
+    <div class="row"><button class="btn pri" type="submit">${st.hasAdmin ? '로그인' : '설정하고 로그인'}</button><button class="btn" type="button" data-rtx>닫기</button></div><div class="small crit-t" id="rtMsg"></div></div></form>`;
+  box.hidden = false;setTimeout(() => $('#rtPw')?.focus(), 50);
+}
+async function rtLoginSubmit(){
+  const pw = $('#rtPw').value, pw2 = $('#rtPw2')?.value;const msg = $('#rtMsg');
+  try{
+    let j;if (!RT.st.hasAdmin){if (pw !== pw2){msg.textContent = '두 비밀번호가 다릅니다.';return;}j = await rtCall('auth', {op:'setup', pw}, false);}
+    else j = await rtCall('auth', {op:'login', role:'admin', pw}, false);
+    $('#rtPw').value = '';if ($('#rtPw2')) $('#rtPw2').value = '';
+    rtSave(j);location.reload();
+  }catch(e){msg.textContent = e.message;}
+}
+function rtRenderSlot(){const el = $('#rtSlot');if (el) el.innerHTML = rtBadgeHtml().replace('class="btn"', 'class="btn sm"');}
+document.addEventListener('click', e => {
+  const b = e.target.closest('#rtBtn');if (b){if (b.hasAttribute('data-out')){rtClear();try{sessionStorage.removeItem('gfl:sup');}catch(x){}location.reload();}else rtLoginOpen();return;}
+  if (e.target.closest('[data-rtx]') || e.target.id === 'rtModal') $('#rtModal').hidden = true;
+});
+document.addEventListener('submit', e => {if (e.target.id === 'rtForm'){e.preventDefault();rtLoginSubmit();}});
+function rtBadgeHtml(){
+  if (window.claude || !RT.st?.configured) return '';
+  if (!RT.info) return '<button class="btn" id="rtBtn" title="급식.shop 공유 DB에 센터 관리자로 로그인">센터 로그인</button>';
+  const who = RT.info.role === 'admin' ? '센터 관리자' : RT.info.role === 'sup' ? RT.info.sup : '기사 ' + (RT.info.driverId || '');
+  return `<button class="btn" id="rtBtn" data-out title="로그아웃">${esc(who)} · 로그아웃</button>`;
+}
+
 async function initDb(){
   try{DB = await window.claude?.use?.('db');}catch(e){DB = null;}
   try{USER = await window.claude?.use?.('user');UID = USER ? await USER.id() : null;}catch(e){USER = null;}
+  if (!DB && !window.claude){await rtStatus();if (RT.st?.configured && RT.tok) DB = remoteDB();rtRenderSlot();
+    if (DB && RT.info?.role === 'sup'){SUP.sess = {id:RT.info.id, sup:RT.info.sup, exp:RT.info.exp};SUP.mode = 'sup';SUP.who = RT.info.sup;}}
   if (!DB){dayDbInit();dbBadge('보기 전용 · 공유 DB 없음', 'warn');daRender();renderAcct();dbReadyResolve();
     // 독립 웹사이트(급식.shop)에서는 최근 umji 출고 스냅샷을 읽어 보여 준다
     try{const r = await fetch('data/ship-latest.json', {cache:'no-store'});if (r.ok){const j = await r.json();SHIP.batches = j.batches || {};SHIP.rows = j.rows || {};renderShip();}}catch(e){}
     try{const r = await fetch('data/orders-demo.json', {cache:'no-store'});if (r.ok){const j = await r.json();Object.entries(j).forEach(([k, o]) => STD.orders[k] = Object.assign({example:true}, o));ordDirty = true;daRender(true);}}catch(e){}
     return;}
-  dbBadge('공유 DB 연결됨', 'ok');
+  dbBadge(DB.remote ? '급식.shop 공유 DB · ' + ({admin:'센터 관리자', sup:'공급업체', driver:'기사'}[RT.info.role] || '') : '공유 DB 연결됨', 'ok');
   DB.collection('std_center').limit(1000).onSnapshot(sn => {STD.center = {};sn.docs.forEach(d => STD.center[d.id] = d.data());if (view === 'std') renderStd();if (drawer?.code) renderStdDrawer();}, e => dbBadge('DB 오류: ' + e.code, 'crit'));
   DB.collection('std_custom').limit(1000).onSnapshot(sn => {STD.custom = {};sn.docs.forEach(d => STD.custom[d.id] = Object.assign({code:d.id}, d.data()));if (view === 'std') renderStd();}, e => {});
-  DB.collection('orders').limit(200).onSnapshot(sn => {STD.orders = {};sn.docs.forEach(d => STD.orders[d.id] = d.data());if (drawer?.sid){ordDirty = true;renderDrawer(false);}daRender(true);}, e => {});
-  try{DA.adminView = USER ? await USER.canEdit() : false;}catch(e){}
+  DB.collection('orders').limit(200).onSnapshot(async sn => {if (DB.remote && !sn.docs.length){if (!Object.keys(STD.orders).length){try{const r = await fetch('data/orders-demo.json', {cache:'no-store'});if (r.ok){const j = await r.json();Object.entries(j).forEach(([k, o]) => STD.orders[k] = Object.assign({example:true}, o));ordDirty = true;daRender(true);if (view === 'sup') renderSup(true);}}catch(e){}}return;}STD.orders = {};sn.docs.forEach(d => STD.orders[d.id] = d.data());if (drawer?.sid){ordDirty = true;renderDrawer(false);}daRender(true);}, e => {});
+  try{DA.adminView = DB.remote ? RT.info.role === 'admin' : USER ? await USER.canEdit() : false;}catch(e){}
   DB.collection('unload_hot').limit(1000).onSnapshot(sn => {HOT.rows = {};sn.docs.forEach(d => HOT.rows[d.id] = d.data());if (view === 'veh') renderHot(true);}, e => {});
   iotDbInit();supDbInit();dayDbInit();initDriverDb();daRender();renderAcct();dbReadyResolve();
 }
@@ -3855,9 +3937,13 @@ async function doLogin(form){
   // 시험용 계정 1 / 1 → 첫 번째 기사로 로그인 (운영 전 삭제 권장)
   if (id === '1' && pw === '1'){const d0 = driverList()[0];F.lgPw.value = '';if (!d0){show('등록된 기사가 없습니다. 관리자에게 문의하세요.', true);return;}
     setLock({n:0, until:0});
-    if (!DB){DA.demo = d0.id;DA.out = false;DA.page = 'today';DA.sel = null;toast(`${d0.name || d0.id} 기사님, 시험 계정으로 로그인했습니다.`);return daRender();}
+    if (!DB || DB.remote){DA.demo = d0.id;DA.out = false;DA.page = 'today';DA.sel = null;toast(`${d0.name || d0.id} 기사님, 시험 계정으로 로그인했습니다.`);return daRender();}
     const a0 = DA.auth[d0.id];saveSess({driverId:d0.id, authAt:a0 ? a0.at : undefined, exp:Date.now() + 12 * 3600e3, at:Date.now(), test:true}, F.lgKeep.checked);
     DA.out = false;try{sessionStorage.removeItem('gfl:out');}catch(e){}DA.page = 'today';DA.sel = null;toast(`${d0.name || d0.id} 기사님, 시험 계정으로 로그인했습니다.`);return daRender();}
+  if (!window.claude && RT.st?.configured && (!DB || DB.remote)){
+    show('확인 중…');try{const j = await rtCall('auth', {op:'login', role:'driver', id, pw}, false);F.lgPw.value = '';rtSave(j);setLock({n:0, until:0});
+      saveSess({driverId:j.driverId, authAt:j.authAt || undefined, exp:Date.now() + 12 * 3600e3, at:Date.now()}, F.lgKeep.checked);try{sessionStorage.removeItem('gfl:out');}catch(e){}
+      location.hash = 'driver';location.reload();}catch(e){F.lgPw.value = '';const n = lk.n + 1;setLock(n >= 5 ? {n:0, until:Date.now() + 5 * 60000} : {n, until:0});show(e.message, true);}return;}
   if (!DB){show('아이디 또는 비밀번호가 맞지 않습니다. 관리자에게 문의하세요.', true);return;}
   show('확인 중…');
   const d = driverList().find(x => loginIdOf(x) === id);
