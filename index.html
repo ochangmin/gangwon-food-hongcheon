@@ -786,6 +786,23 @@ main{padding-block:18px 40px;padding-left:max(16px,env(safe-area-inset-left,0px)
 .iot-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 #iot-tbl tr.sel td{background:var(--accent-soft)}
 @media (max-width:900px){.iot-ctl{grid-template-columns:1fr}.iot-grid{grid-template-columns:1fr 1fr}}
+.sup-list{display:flex;flex-direction:column;max-height:640px;overflow:auto}
+.sup-li{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:3px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.sup-li:hover{background:var(--sunk)}.sup-li.on{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+.sup-bar{height:4px;border-radius:2px;background:var(--line)}.sup-bar i{display:block;height:4px;border-radius:2px;background:var(--accent)}
+.sup-steps{display:flex;gap:6px;flex-wrap:wrap}.sup-steps span{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink3);padding:5px 10px;border-radius:999px;background:var(--sunk)}
+.sup-steps i{font-style:normal;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;background:var(--line);color:var(--ink2)}
+.sup-steps span.on{background:var(--accent-soft);color:var(--navy);font-weight:600}.sup-steps span.on i{background:var(--accent);color:#fff}
+tr.sup-ready td{background:#F2FBF6}
+.sup-act{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;border-top:1px solid var(--line)}
+.sup-doc{position:fixed;inset:0;background:rgba(10,25,40,.45);z-index:3000;display:flex;justify-content:center;align-items:flex-start;padding:30px 12px;overflow:auto}
+.sup-doc-in{background:#fff;color:#111;max-width:860px;width:100%;border-radius:12px;padding:24px 28px}
+.sup-doc-in h2{margin:6px 0 10px;font-size:22px}.sup-doc-in table{width:100%;border-collapse:collapse;font-size:12.5px;margin:8px 0}
+.sup-doc-in th,.sup-doc-in td{border:1px solid #c9d1d9;padding:5px 7px;text-align:left}.sup-doc-in td.n{text-align:right}
+.doc-kv{display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:13px}.doc-note{font-size:11.5px;color:#666}.doc-sch{break-inside:avoid;margin-top:10px}.doc-sch h3{font-size:14px;margin:8px 0 4px}
+@media print{body.printing-doc>*:not(main){display:none!important}body.printing-doc main>*:not(#v-sup){display:none!important}body.printing-doc #v-sup>*:not(#supDoc){display:none!important}body.printing-doc .sup-doc{position:static;background:none;padding:0}body.printing-doc .no-print{display:none!important}}
+.stop-ico.opt{background:#7C3AED !important;color:#fff !important;border-color:#fff !important}
+#optTbl tr.sel td{background:#F3EEFE}
 .mapstyle button[data-mz]{border-top:1px solid var(--line);line-height:1.15;font-weight:600;color:var(--navy)}
 .mapstyle button[aria-pressed="true"]{background:var(--navy);color:#fff;font-weight:600}
 .attr{position:absolute;right:4px;bottom:2px;z-index:500;font-size:10px;color:#fff;text-shadow:0 0 2px #000;pointer-events:none;max-width:70%;text-align:right}
@@ -1021,6 +1038,7 @@ body.driver-mode{background:#EEF2F5}
     <button role="tab" data-v="std">표준 식자재</button>
     <button role="tab" data-v="ana">배송 분석</button>
     <button role="tab" data-v="drv">운행 시연</button>
+    <button role="tab" data-v="sup">공급업체 출고</button>
     <button role="tab" data-v="ship">출고 데이터</button>
     <button role="tab" data-v="acct">기사 계정</button>
     <button role="tab" data-v="cfg">IoT 설정</button>
@@ -1074,6 +1092,8 @@ body.driver-mode{background:#EEF2F5}
     <div class="panel"><div class="ph"><h3>차량 목록</h3><span class="sub" id="vehCount"></span></div><div class="vlist" id="vehList"></div></div>
     <div class="stack" id="vehDetail"></div>
   </div>
+  <div class="panel" id="odoPanel"><div class="ph"><h3>차량별 운행 거리</h3><span class="sub">실제 도로 위 이동 거리를 차량마다 누적합니다 · 진행 중 코스는 계획 거리 대비 진행률</span><div class="r"><button class="btn sm" id="odoCsv">CSV</button></div></div>
+    <div class="pb kpis" id="odoKpi" style="padding-bottom:0"></div><div class="tw scroll" style="max-height:420px"><table class="t" id="odoTbl"></table></div></div>
   <div class="panel" id="hotPanel"><div class="ph"><h3>하차 중 고온 기록</h3><span class="sub" id="hotSub">학교 하차(문 열림)부터 온도 회복까지 최고 온도가 기준 이상이었던 건만 따로 저장합니다</span>
     <div class="r"><select class="in" id="hotDate" aria-label="날짜"></select><select class="in" id="hotSt" aria-label="조치 상태"><option value="">전체 상태</option><option>미확인</option><option>확인</option><option>조치완료</option></select><button class="btn sm" id="hotCsv">CSV</button></div></div>
     <div class="pb kpis" id="hotKpi" style="padding-bottom:0"></div>
@@ -1112,6 +1132,8 @@ body.driver-mode{background:#EEF2F5}
   <div class="vhead"><div><h2>GIS 배송 코스 최적화</h2><p>코스별 방문 순서를 최소 소요시간으로 계산하고, 직전 출발지에서 출발해 해당 학교 납품 완료까지 <b id="legLimitTxt">30</b>분 이내인지 구간마다 판정합니다.</p></div>
     <div class="act"><button class="btn pri" id="optimize">전체 코스 재계산</button><button class="btn" id="applyRoute">결과를 오늘 배차에 적용</button></div></div>
   <div class="kpis" id="gisKpi"></div>
+  <div class="panel" id="optPanel"><div class="ph"><h3>최적 운행 코스</h3><span class="sub">실제 도로 거리로 방문 순서와 출발지(센터·중계거점)를 다시 골라 현재 코스와 비교합니다</span><div class="r"><button class="btn sm" id="optCalc">다시 계산</button><button class="btn sm pri" id="optAll">최적 코스 모두 적용</button><button class="btn sm" id="optReset">기본 순서로</button></div></div>
+    <div class="tw"><table class="t" id="optTbl"></table></div><div class="pb small" id="optSum" style="padding-top:8px"></div></div>
   <div class="grid2">
     <div class="panel"><div class="ph"><h3>코스 지도</h3><span class="sub" id="gisSub"></span><div class="r"><button class="btn sm" data-big>크게 보기</button></div></div>
       <div class="mapwrap tall"><div class="map" id="mapGis"></div>
@@ -1190,6 +1212,13 @@ body.driver-mode{background:#EEF2F5}
 </section>
 
 <!-- 출고 데이터 -->
+<section class="view" id="v-sup" hidden>
+  <div class="vhead"><div><h2>공급업체 출고처리</h2><p>학교 발주를 공급업체별로 묶어 보여 줍니다. 공급업체는 품목별 출고수량·결품 사유를 입력하고 출고를 확정하며, 센터는 입고(검수)를 확인합니다. 거래명세서와 학교별 분류표를 바로 출력할 수 있습니다.</p></div>
+    <div class="act"><select class="in" id="supMode" aria-label="보기"><option value="center">센터 보기 (전체)</option><option value="sup">공급업체 보기</option></select><select class="in" id="supWho" aria-label="공급업체" hidden></select><input class="in" id="supDate" type="date" aria-label="출고일"><input class="in" id="supQ" placeholder="업체·품목 검색" style="width:150px"></div></div>
+  <div class="kpis" id="supKpi"></div>
+  <div class="grid2 side"><div class="panel"><div class="ph"><h3>공급업체</h3><span class="sub">진행 단계 · 준비 품목</span></div><div class="sup-list" id="supList"></div></div><div id="supDetail"></div></div>
+  <div class="sup-doc" id="supDoc" hidden><div class="sup-doc-in"><div class="row no-print" style="justify-content:flex-end;gap:6px"><button class="btn pri sm" data-docp>인쇄</button><button class="btn sm" data-docx>닫기</button></div><div id="supDocBody"></div></div></div>
+</section>
 <section class="view" id="v-ship" hidden>
   <div class="vhead"><div><h2>umji 출고 데이터 · 홍천</h2><p>강원 먹거리 시스템(umji.gwd.go.kr)에서 내려받은 출고 엑셀을 올리면 홍천센터 출고분만 골라 저장합니다. 다른 센터·지역 행은 저장하지 않습니다.</p></div></div>
   <div class="panel"><div class="ph"><h3>파일 가져오기</h3><span class="sub">.xls · .xlsx · .csv</span></div>
@@ -1438,7 +1467,7 @@ function optimizeOrder(start, ids){
 let PLAN = {};
 function planAll(){
   COURSES.forEach(c => {
-    const start = courseStart(c);const order = optimizeOrder(start, c.ids);let p = start;
+    const start = courseStart(c);const ov = store.get('optPlan', {})[c.id];const order = ov && ov.length === c.ids.length && ov.every(id => c.ids.includes(id)) ? ov.slice() : optimizeOrder(start, c.ids);let p = start;
     const legs = order.map(id => {const s = SCH[id];const km = roadKm(p, s), dm = driveMin(p, s), lm = dm + CFG.unload;const from = p;p = s;return {id, from, km, drive:dm, leg:lm, ok:lm <= CFG.legLimit};});
     PLAN[c.id] = {start, order, legs, total:legs.reduce((a, l) => a + l.leg, 0), km:legs.reduce((a, l) => a + l.km, 0), bad:legs.filter(l => !l.ok).length};
   });
@@ -1555,22 +1584,24 @@ function stepVehicle(v, dt){
   if (r){
     r.t += dt;
     if (r.phase === 'trunk' || r.phase === 'drive' || r.phase === 'return'){
-      const f = clamp(r.t / r.dur, 0, 1);if (f >= 1){v.lat = r.to.lat;v.lng = r.to.lng;} else {const q = legPos(r.from, r.to, f);v.lat = q[0];v.lng = q[1];}r.f = f;
+      const f = clamp(r.t / r.dur, 0, 1);const lk = r.phase + (r.i || 0);const f0 = r._lk === lk ? (r.f || 0) : 0;r._lk = lk;
+      if (f >= 1){v.lat = r.to.lat;v.lng = r.to.lng;} else {const q = legPos(r.from, r.to, f);v.lat = q[0];v.lng = q[1];}r.f = f;
+      {const Rr = roadGet(r.from, r.to);odoAdd(v, (f - f0) * (Rr ? Rr.len : hav(r.from, r.to) * CFG.roadFactor));}
       if (f >= 1){
         if (r.phase === 'trunk'){r.phase = 'drive';r.from = {lat:v.lat, lng:v.lng};r.to = SCH[DEL.find(x => x.id === r.stops[0]).sid];r.dur = driveMin(r.from, r.to) * (0.92 + R() * .25);r.t = 0;r.legStart = SIM;const d = DEL.find(x => x.id === r.stops[0]);d.status = '출발';d.depart = SIM;}
         else if (r.phase === 'drive'){const d = DEL.find(x => x.id === r.stops[r.i]);d.status = '도착';d.arrive = SIM;r.t = 0;
           if (v.manual){r.phase = 'arrived';}
           else {r.phase = 'unload';r.unl = CFG.unload - 3 + R() * 5 + (SCH[d.sid].lv === '고' ? 1.5 : 0);r.doorFor = 1.8 + R() * 2.6 + (SCH[d.sid].lv === '고' ? 1 : 0);openDoor(v, d);}
         }
-        else if (r.phase === 'return'){v.run = null;v.status = '대기';}
+        else if (r.phase === 'return'){odoRunDone(v, r);v.run = null;v.status = '대기';}
       }
     } else if (r.phase === 'unload'){if (v.door && r.t >= (r.doorFor ?? 99)) v.door = false;if (r.t >= r.unl) completeStop(v);}
   } else if (v.region !== '홍천군'){
     if (v.status === '운행'){
       const RR = regRoad(v.region);
       if (RR){if (v.rp == null){v.rp = R() * RR.len;v.rdir = R() < .5 ? 1 : -1;}
-        if (!v.door){v.rp += v.rdir * (v.rp < 2 || v.rp > RR.len - 2 ? 0.45 : 0.75) * dt;if (v.rp >= RR.len){v.rp = RR.len;v.rdir = -1;}if (v.rp <= 0){v.rp = 0;v.rdir = 1;}}
-        const q = roadAt(RR, v.rp / RR.len).p;v.lat = q[0];v.lng = q[1];}
+        const rp0 = v.rp;if (!v.door){v.rp += v.rdir * (v.rp < 2 || v.rp > RR.len - 2 ? 0.45 : 0.75) * dt;if (v.rp >= RR.len){v.rp = RR.len;v.rdir = -1;}if (v.rp <= 0){v.rp = 0;v.rdir = 1;}}
+        odoAdd(v, Math.abs(v.rp - rp0));const q = roadAt(RR, v.rp / RR.len).p;v.lat = q[0];v.lng = q[1];}
       else {v.wander += (R() - .5) * .6;v.lat += Math.sin(v.wander) * .0012 * dt;v.lng += Math.cos(v.wander) * .0015 * dt;
         const dx = v.lat - v.home.lat, dy = v.lng - v.home.lng;if (Math.hypot(dx, dy) > .12){v.wander += Math.PI;}}
       if (!v.door && R() < .006 * dt){v.door = true;v._close = SIM + 2 + R() * 2.5;} if (v.door && SIM >= v._close){v.door = false;}}
@@ -2060,6 +2091,215 @@ function sendCmd(v, op){
   }, 700 + R() * 700);
   refresh();
 }
+
+
+/* ---------- 차량별 운행 거리 (주행 기록계) ---------- */
+const ODO = {date:TODAY, v:{}, hist:store.get('odoHist', {}), _n:0};
+function odoOf(v){if (ODO.date !== TODAY){ODO.date = TODAY;ODO.v = {};}return ODO.v[v.id] || (ODO.v[v.id] = {km:0, runs:[], drive:0});}
+function odoAdd(v, km){
+  if (!(km > 0) || km > 30) return;const o = odoOf(v);o.km += km;if (v.run) v.run.km = (v.run.km || 0) + km;
+  const h = ODO.hist[TODAY] || (ODO.hist[TODAY] = {});h[v.id] = +((h[v.id] || 0) + km).toFixed(3);
+  if (++ODO._n % 200 === 0){const ks = Object.keys(ODO.hist).sort();while (ks.length > 14) delete ODO.hist[ks.shift()];store.set('odoHist', ODO.hist);}
+}
+function odoRunDone(v, r){const o = odoOf(v);o.runs.push({course:r.course, meal:r.meal, km:+(r.km || 0).toFixed(1), plan:+courseKm(r.course).toFixed(1), stops:(r.stops || []).length, end:SIM});store.set('odoHist', ODO.hist);}
+// 코스 계획 거리 = (중계거점까지) + 학교 구간 + 센터 복귀
+function courseKm(cid, P){
+  P = P || PLAN[cid];if (!P) return 0;const trunk = P.start === HUB ? 0 : roadKm(HUB, P.start);
+  const last = P.order.length ? SCH[P.order[P.order.length - 1]] : P.start;return trunk + P.legs.reduce((a, l) => a + l.km, 0) + roadKm(last, HUB);
+}
+function courseMin(cid, P){P = P || PLAN[cid];if (!P) return 0;const trunk = P.start === HUB ? 0 : driveMin(HUB, P.start);const last = P.order.length ? SCH[P.order[P.order.length - 1]] : P.start;return trunk + P.total + driveMin(last, HUB);}
+function renderOdo(force){
+  const box = $('#odoPanel');if (!box || view !== 'veh') return;
+  const reg = $('#vehRegion')?.value || '';const list = VEH.filter(v => !reg || v.region === reg);
+  const sig = list.map(v => [v.id, Math.round(odoOf(v).km * 10), v.run ? Math.round((v.run.km || 0) * 10) : -1, odoOf(v).runs.length]).join('|');
+  if (!force && sig === box._sig) return;box._sig = sig;
+  const days = Object.keys(ODO.hist).sort().slice(-7);
+  const wk = v => days.reduce((a, d) => a + (ODO.hist[d]?.[v.id] || 0), 0);
+  const tot = list.reduce((a, v) => a + odoOf(v).km, 0), run = list.filter(v => odoOf(v).km > .05).length;
+  $('#odoKpi').innerHTML = kpi('오늘 총 운행', fmt1(tot), 'km', reg || '전체 지역') + kpi('운행한 차량', run, '/ ' + list.length + '대', '오늘') + kpi('차량당 평균', fmt1(run ? tot / run : 0), 'km', '운행 차량 기준') + kpi('최근 7일 합계', fmt1(list.reduce((a, v) => a + wk(v), 0)), 'km', days.length + '일 기록');
+  const mx = Math.max(1, ...list.map(v => odoOf(v).km));
+  $('#odoTbl').innerHTML = `<thead><tr><th>차량</th><th>지역</th><th>기사</th><th>상태</th><th class="n">오늘 운행</th><th style="min-width:120px"></th><th>진행 중 코스</th><th class="n">완료 운행</th><th class="n">계획 대비</th><th class="n">최근 7일</th></tr></thead><tbody>${list.sort((a, b) => odoOf(b).km - odoOf(a).km).map(v => {const o = odoOf(v);const r = v.run;
+    const pk = r ? courseKm(r.course) : 0;const done = o.runs;const dk = done.reduce((a, x) => a + x.km, 0), dp = done.reduce((a, x) => a + x.plan, 0);
+    return `<tr data-veh="${v.id}" style="cursor:pointer"><td><b>${v.id}</b> <span class="small muted">${esc(v.plate)}</span></td><td class="small">${esc(v.region)}</td><td class="small">${esc(v.driver || '-')}</td><td>${v.run ? '<span class="pill info">운행 중</span>' : v.status === '운행' ? '<span class="pill info">운행</span>' : '<span class="pill">대기</span>'}</td>
+      <td class="n mono"><b>${fmt1(o.km)}</b> km</td><td><div style="height:8px;border-radius:4px;background:var(--sunk)"><div style="height:8px;border-radius:4px;background:var(--accent);width:${(o.km / mx * 100).toFixed(1)}%"></div></div></td>
+      <td class="small">${r ? `코스 ${r.course} · ${fmt1(r.km || 0)} / ${fmt1(pk)}km <div style="height:5px;border-radius:3px;background:var(--sunk);margin-top:3px"><div style="height:5px;border-radius:3px;background:var(--navy);width:${Math.min(100, (r.km || 0) / Math.max(pk, .1) * 100).toFixed(0)}%"></div></div>` : '-'}</td>
+      <td class="n mono">${done.length ? done.length + '회 · ' + fmt1(dk) + 'km' : '-'}</td><td class="n mono ${dp && dk / dp > 1.15 ? 'crit-t' : ''}">${dp ? Math.round(dk / dp * 100) + '%' : '-'}</td><td class="n mono">${fmt1(wk(v))} km</td></tr>`;}).join('')}</tbody>`;
+}
+function odoCsv(){
+  const reg = $('#vehRegion')?.value || '';const days = Object.keys(ODO.hist).sort().slice(-14);
+  saveCsv('차량별_운행거리.csv', '차량별 운행 거리', [['차량', '번호판', '지역', '기사', '오늘 운행(km)', '완료 운행 수', ...days.map(d => d + '(km)')], ...VEH.filter(v => !reg || v.region === reg).map(v => [v.id, v.plate, v.region, v.driver || '', fmt1(odoOf(v).km), odoOf(v).runs.length, ...days.map(d => fmt1(ODO.hist[d]?.[v.id] || 0))])]);
+}
+
+/* ---------- 최적 운행 코스 (실제 도로 기준) ---------- */
+// 실제 도로 거리·시간으로 방문 순서(최근접 + 2-opt + 재배치)와 출발지(센터 / 중계거점)를 함께 고른다. 30분 초과 구간 수를 먼저 줄이고, 다음으로 전체 시간을 줄인다.
+let OPT = {}, optView = null;
+function optCost(start, order){
+  let p = start, bad = 0, t = 0;for (const id of order){const s = SCH[id];const lm = driveMin(p, s) + CFG.unload;if (lm > CFG.legLimit) bad++;t += lm;p = s;}
+  t += driveMin(p, HUB) + (start === HUB ? 0 : driveMin(HUB, start));return bad * 1000 + t;
+}
+function optOrder(start, ids){
+  const left = ids.slice(), order = [];let p = start;
+  while (left.length){let bi = 0, bd = Infinity;left.forEach((id, i) => {const d = driveMin(p, SCH[id]);if (d < bd){bd = d;bi = i;}});order.push(left.splice(bi, 1)[0]);p = SCH[order[order.length - 1]];}
+  let best = optCost(start, order), imp = true, guard = 0;
+  while (imp && guard++ < 60){imp = false;
+    for (let i = 0; i < order.length - 1; i++) for (let k = i + 1; k < order.length; k++){const c = order.slice(0, i).concat(order.slice(i, k + 1).reverse(), order.slice(k + 1));const v = optCost(start, c);if (v + 1e-9 < best){best = v;order.splice(0, order.length, ...c);imp = true;}}
+    for (let i = 0; i < order.length; i++) for (let j = 0; j < order.length; j++){if (i === j) continue;const c = order.slice();const [x] = c.splice(i, 1);c.splice(j, 0, x);const v = optCost(start, c);if (v + 1e-9 < best){best = v;order.splice(0, order.length, ...c);imp = true;}}
+  }
+  return order;
+}
+function planOf(start, order){let p = start;const legs = order.map(id => {const s = SCH[id];const km = roadKm(p, s), dm = driveMin(p, s), lm = dm + CFG.unload;const from = p;p = s;return {id, from, km, drive:dm, leg:lm, ok:lm <= CFG.legLimit};});
+  return {start, order, legs, total:legs.reduce((a, l) => a + l.leg, 0), km:legs.reduce((a, l) => a + l.km, 0), bad:legs.filter(l => !l.ok).length};}
+function optimizeAll(){
+  OPT = {};
+  COURSES.forEach(c => {
+    const starts = [HUB];if (c.relayOpt && RELAYS[c.relayOpt]) starts.push(RELAYS[c.relayOpt]);
+    let best = null;starts.forEach(st => {const o = optOrder(st, c.ids);const P = planOf(st, o);const sc = optCost(st, o);if (!best || sc < best.sc) best = {sc, P};});
+    const P = best.P;OPT[c.id] = Object.assign(P, {relay:P.start !== HUB, kmAll:courseKm(c.id, P), minAll:courseMin(c.id, P)});
+  });
+  return OPT;
+}
+function renderOpt(){
+  const box = $('#optTbl');if (!box) return;if (!Object.keys(OPT).length) optimizeAll();
+  let sk = 0, sm = 0, sb = 0;
+  box.innerHTML = `<thead><tr><th>코스</th><th>차량</th><th>출발</th><th class="n">현재 거리</th><th class="n">현재 시간</th><th class="n">30분 초과</th><th>최적 출발</th><th class="n">최적 거리</th><th class="n">최적 시간</th><th class="n">30분 초과</th><th class="n">절감</th><th></th></tr></thead><tbody>${COURSES.map(c => {
+    const P = PLAN[c.id], O = OPT[c.id];const ck = courseKm(c.id), cm = courseMin(c.id);const dk = ck - O.kmAll, dm = cm - O.minAll;sk += dk;sm += dm;sb += P.bad - O.bad;
+    const same = P.start === O.start && P.order.join() === O.order.join();
+    return `<tr class="${optView === c.id ? 'sel' : ''}"><td><b>${c.id}</b> <span class="small muted">${esc(c.name)}</span></td><td class="small">${c.veh}</td><td class="small">${P.start === HUB ? '센터' : esc(P.start.name)}</td><td class="n mono">${fmt1(ck)}km</td><td class="n mono">${Math.round(cm)}분</td><td class="n mono ${P.bad ? 'crit-t' : ''}">${P.bad}</td>
+      <td class="small">${O.start === HUB ? '센터' : esc(O.start.name)}</td><td class="n mono"><b>${fmt1(O.kmAll)}km</b></td><td class="n mono"><b>${Math.round(O.minAll)}분</b></td><td class="n mono ${O.bad ? 'crit-t' : ''}">${O.bad}</td>
+      <td class="n mono">${same ? '<span class="muted">현재가 최적</span>' : `${dk > .05 ? '−' + fmt1(dk) + 'km' : dk < -.05 ? '+' + fmt1(-dk) + 'km' : '0km'} · ${dm > .5 ? '−' + Math.round(dm) + '분' : dm < -.5 ? '+' + Math.round(-dm) + '분' : '0분'}`}</td>
+      <td style="white-space:nowrap"><button class="btn sm" data-optv="${c.id}">${optView === c.id ? '숨기기' : '지도'}</button>${same ? '' : `<button class="btn sm pri" data-opta="${c.id}">적용</button>`}</td></tr>`;}).join('')}</tbody>`;
+  const chg = (x, u) => x > .05 ? `<b>${fmt1(x)}${u}</b> 줄어` : x < -.05 ? `<b>${fmt1(-x)}${u}</b> 늘어` : '변화 없어';
+  $('#optSum').innerHTML = `6개 코스를 모두 최적으로 바꾸면 하루 1회 운행 기준 총 거리가 ${chg(sk, 'km')}지고, 총 시간은 ${chg(sm, '분').replace(/(\d+)\.\d분/, '$1분')}집니다. 30분 초과 구간은 <b>${Math.max(0, sb)}개</b> 줄어듭니다. 30분 원칙을 먼저 지키도록 고르기 때문에 일부 코스(예: 중계거점 경유)는 거리가 늘 수 있습니다. (실제 도로 거리 · 하차 ${CFG.unload}분 · 센터 복귀 포함)`;
+}
+function applyOpt(ids){
+  const ov = store.get('optPlan', {});
+  ids.forEach(id => {const O = OPT[id];if (!O) return;const c = COURSES.find(x => x.id === id);relayState[id] = O.start !== HUB;ov[id] = O.order.slice();});
+  store.set('optPlan', ov);store.set('relay', relayState);planAll();COURSES.forEach(c => {if (PLAN[c.id]) delete PLAN[c.id]._road;});
+  renderGis(true);renderOpt();toast(`${ids.length}개 코스에 최적 순서를 적용했습니다. 다음 출발부터 반영됩니다.`);
+}
+function drawOptLine(){
+  const G = MAPS.gis;if (!G) return;if (G.optL){G.m.removeLayer(G.optL);G.optL = null;}
+  if (!optView || !OPT[optView]) return;const O = OPT[optView];
+  const pts = roadLine([[O.start.lat, O.start.lng], ...O.order.map(id => [SCH[id].lat, SCH[id].lng]), [HUB.lat, HUB.lng]]);
+  G.optL = L.layerGroup([L.polyline(pts, {color:'#ffffff', weight:8, opacity:.7}), L.polyline(pts, {color:'#7C3AED', weight:4.5, opacity:.95, dashArray:'10 6'}),
+    ...O.order.map((id, i) => L.marker([SCH[id].lat, SCH[id].lng], {icon:divIcon(i + 1, 'stop-ico opt'), zIndexOffset:1500}).bindTooltip(`최적 ${i + 1}. ${SCH[id].name}`))]).addTo(G.m);
+  G.m.fitBounds(L.latLngBounds(pts).pad(.12));
+}
+
+/* ---------- 공급업체 출고처리 ----------
+   학교 발주(STD.orders)를 공급업체별로 묶어 → 공급업체가 품목별 출고수량·결품을 처리하고 출고확정 → 센터가 입고(검수) 확인.
+   공유 DB가 있으면 sup_ship/{날짜_업체} 문서에 저장, 없으면 이 브라우저에 저장. */
+const SUP = {ship:store.get('supShip', {}), sel:null, date:TODAY, mode:'center', who:'', q:''};
+const SUP_ST = ['발주접수', '출고준비', '출고확정', '입고완료'];
+const SUP_REASON = ['', '재고 부족', '품절', '품질 불량', '규격 변경', '기타'];
+function supName(l){
+  const it = typeof stdItem === 'function' ? stdItem(l.code) : null;if (it && it.sup) return it.sup;
+  const m = String(l.name || '').match(/^\[([^\]]+)\]/);return m ? m[1] : '기타 공급업체';
+}
+function supKey(date, name){let h = 0;for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;return date + '_' + h.toString(36);}
+function supAgg(){
+  const up = typeof hcUnitPrices === 'function' ? hcUnitPrices() : {};const M = new Map();
+  Object.entries(STD.orders).forEach(([sid, o]) => (o.lines || []).forEach(l => {if (!(+l.qty > 0)) return;
+    const n = supName(l);if (!M.has(n)) M.set(n, {name:n, items:new Map(), schools:new Set()});const g = M.get(n);g.schools.add(sid);
+    const k = l.code || l.name;if (!g.items.has(k)) g.items.set(k, {code:l.code, name:l.name, spec:l.spec, ou:l.ou, storage:l.storage, qty:0, by:[], price:0});
+    const it = g.items.get(k);it.qty += +l.qty;it.by.push({sid, qty:+l.qty});if (!it.price){const pr = typeof hcPrice === 'function' ? hcPrice(l, up) : {v:+l.price || 0};it.price = pr.v || 0;}}));
+  return [...M.values()].map(g => Object.assign(g, {items:[...g.items.values()].sort((a, b) => a.name.localeCompare(b.name, 'ko'))})).sort((a, b) => b.items.length - a.items.length);
+}
+function supState(g){const k = supKey(SUP.date, g.name);return SUP.ship[k] || {status:'발주접수', items:{}};}
+function supItemOut(st, it){const x = st.items?.[it.code || it.name];return x && x.out != null ? x.out : it.qty;}
+async function supSave(g, patch){
+  const k = supKey(SUP.date, g.name);const cur = SUP.ship[k] || {status:'발주접수', items:{}, sup:g.name, date:SUP.date};
+  const nx = Object.assign({}, cur, patch, {sup:g.name, date:SUP.date, at:Date.now()});SUP.ship[k] = nx;
+  if (DB){dbWrite(() => DB.doc('sup_ship/' + k).set(nx));} else store.set('supShip', SUP.ship);
+  clearTimeout(SUP._t);SUP._t = setTimeout(() => {if (document.activeElement && $('#supDetail').contains(document.activeElement)) document.activeElement.blur();renderSup(true);}, 0);
+}
+function supItemSet(g, code, patch){const st = supState(g);const items = Object.assign({}, st.items);items[code] = Object.assign({}, items[code] || {}, patch);
+  supSave(g, {items, status:st.status === '발주접수' ? '출고준비' : st.status});}
+function supStepsHtml(st){const i = SUP_ST.indexOf(st.status);return `<div class="sup-steps">${SUP_ST.map((k, j) => `<span class="${j <= i ? 'on' : ''}"><i>${j + 1}</i>${k}</span>`).join('')}</div>`;}
+function supPill(s){return `<span class="pill ${{'발주접수':'', '출고준비':'info', '출고확정':'navy', '입고완료':'ok'}[s] || ''}">${s}</span>`;}
+function renderSup(force){
+  if (view !== 'sup') return;
+  const all = supAgg();const sel = $('#supWho');
+  const opts = '<option value="">공급업체 선택</option>' + all.map(g => `<option ${g.name === SUP.who ? 'selected' : ''}>${esc(g.name)}</option>`).join('');
+  if (sel.dataset.o !== opts){sel.innerHTML = opts;sel.dataset.o = opts;}
+  sel.hidden = SUP.mode !== 'sup';
+  let list = SUP.mode === 'sup' ? all.filter(g => g.name === SUP.who) : all;
+  const q = SUP.q.trim();if (q) list = list.filter(g => g.name.includes(q) || g.items.some(i => i.name.includes(q)));
+  if (!SUP.sel || !list.find(g => g.name === SUP.sel)) SUP.sel = list[0]?.name || null;
+  const sts = all.map(g => supState(g));const cnt = s => sts.filter(x => x.status === s).length;
+  const short = all.reduce((a, g) => a + g.items.filter(it => {const x = supState(g).items?.[it.code || it.name];return x && x.out != null && x.out < it.qty;}).length, 0);
+  $('#supKpi').innerHTML = kpi('공급업체', all.length, '곳', SUP.date + ' 출고분') + kpi('출고확정', cnt('출고확정') + cnt('입고완료'), '/ ' + all.length, '공급업체 처리', cnt('출고확정') + cnt('입고완료') === all.length && all.length ? 'ok' : '') + kpi('센터 입고완료', cnt('입고완료'), '/ ' + all.length, '검수 확인') + kpi('결품·부족 품목', short, '건', '발주보다 적게 출고', short ? 'warn' : 'ok');
+  $('#supList').innerHTML = list.map(g => {const st = supState(g);const ready = g.items.filter(it => st.items?.[it.code || it.name]?.ready).length;
+    return `<button class="sup-li ${g.name === SUP.sel ? 'on' : ''}" data-sup="${esc(g.name)}"><span class="row" style="justify-content:space-between;flex-wrap:nowrap"><b>${esc(g.name)}</b>${supPill(st.status)}</span>
+      <span class="small muted">품목 ${g.items.length} · 학교 ${g.schools.size} · 준비 ${ready}/${g.items.length}</span><div class="sup-bar"><i style="width:${Math.round((SUP_ST.indexOf(st.status)) / 3 * 100)}%"></i></div></button>`;}).join('') || '<div class="empty small">표시할 공급업체가 없습니다. 학교 발주가 있어야 출고 목록이 만들어집니다.</div>';
+  const g = list.find(x => x.name === SUP.sel);const box = $('#supDetail');
+  if (!g){box.innerHTML = '<div class="panel"><div class="pb muted">공급업체를 고르세요.</div></div>';return;}
+  if (!force && box.contains(document.activeElement) && box._g === g.name) return;box._g = g.name;
+  const st = supState(g);const lock = st.status === '출고확정' || st.status === '입고완료';const center = SUP.mode === 'center';
+  let tot = 0, totOut = 0;g.items.forEach(it => {tot += it.price * it.qty;totOut += it.price * supItemOut(st, it);});
+  box.innerHTML = `<div class="panel"><div class="ph"><h3>${esc(g.name)}</h3><span class="sub">${SUP.date} 출고 · 품목 ${g.items.length}개 · 학교 ${g.schools.size}곳${tot ? ' · 발주 ' + Math.round(tot).toLocaleString() + '원' : ''}</span><div class="r">${supPill(st.status)}</div></div>
+    <div class="pb">${supStepsHtml(st)}${st.status !== '발주접수' && st.at ? `<div class="small muted" style="margin-top:6px">마지막 처리 ${new Date(st.at).toLocaleString('ko-KR')}${st.eta ? ' · 센터 도착 예정 ' + esc(st.eta) : ''}${st.car ? ' · 차량 ' + esc(st.car) : ''}${st.temp != null && st.temp !== '' ? ' · 출고 온도 ' + esc(st.temp) + '°C' : ''}${st.recvAt ? ' · 입고 확인 ' + new Date(st.recvAt).toLocaleTimeString('ko-KR') : ''}</div>` : ''}</div>
+    <div class="tw scroll" style="max-height:520px"><table class="t" id="supTbl"><thead><tr><th><input type="checkbox" id="supAllReady" ${lock ? 'disabled' : ''} aria-label="전체 준비"></th><th>품목</th><th>규격</th><th>보관</th><th class="n">발주</th><th class="n">출고수량</th><th>단위</th><th>결품·부족 사유</th><th class="n">학교</th>${tot ? '<th class="n">금액</th>' : ''}</tr></thead><tbody>
+      ${g.items.map(it => {const k = it.code || it.name;const x = st.items?.[k] || {};const out = supItemOut(st, it);const shortQ = out < it.qty;
+        return `<tr class="${x.ready ? 'sup-ready' : ''}"><td><input type="checkbox" data-supready="${esc(k)}" ${x.ready ? 'checked' : ''} ${lock ? 'disabled' : ''} aria-label="준비 완료"></td><td style="min-width:200px">${esc(it.name)}<div class="small muted mono">${esc(it.code || '')}</div></td><td class="small">${esc(it.spec || '')}</td><td>${it.storage ? `<span class="st-tag st-${esc(it.storage)}">${esc(it.storage)}</span>` : ''}</td>
+          <td class="n mono">${it.qty}</td><td class="n"><input class="in mono" style="width:76px;text-align:right" type="number" min="0" step="1" data-supout="${esc(k)}" value="${out}" ${lock ? 'disabled' : ''}></td><td class="small">${esc(it.ou || '')}</td>
+          <td><select class="in" data-supreason="${esc(k)}" ${lock || !shortQ ? 'disabled' : ''}>${SUP_REASON.map(r => `<option ${r === (x.reason || '') ? 'selected' : ''} value="${r}">${r || (shortQ ? '사유 선택' : '-')}</option>`).join('')}</select></td>
+          <td class="n"><button class="btn sm ghost" data-supby="${esc(k)}" title="${esc(it.by.map(b => (SCH[b.sid]?.name || b.sid) + ' ' + b.qty).join(', '))}">${it.by.length}곳</button></td>${tot ? `<td class="n mono">${it.price ? Math.round(it.price * out).toLocaleString() : '-'}</td>` : ''}</tr>`;}).join('')}
+    </tbody></table></div>
+    <div class="pb sup-act">
+      ${!lock ? `<label class="field">센터 도착 예정<input class="in" id="supEta" type="time" value="${esc(st.eta || '06:30')}"></label><label class="field">차량번호<input class="in" id="supCar" value="${esc(st.car || '')}" placeholder="예: 12가3456"></label><label class="field">출고 온도(°C)<input class="in" id="supTemp" type="number" step="0.1" value="${esc(st.temp ?? '')}" placeholder="냉장·냉동품"></label>
+        <button class="btn pri" data-supact="confirm">출고확정</button>` : ''}
+      ${st.status === '출고확정' && center ? '<button class="btn pri" data-supact="recv">센터 입고 확인</button><button class="btn" data-supact="undo">출고확정 취소</button>' : ''}
+      ${st.status === '입고완료' && center ? '<button class="btn" data-supact="unrecv">입고 확인 취소</button>' : ''}
+      <span style="flex:1"></span><button class="btn" data-supact="stmt">거래명세서</button><button class="btn" data-supact="label">학교별 분류표</button><button class="btn" data-supact="csv">CSV</button></div></div>`;
+}
+function supDoc(g, kind){
+  const st = supState(g);const rows = g.items.map(it => ({it, out:supItemOut(st, it)}));
+  let html;
+  if (kind === 'stmt'){let sum = 0;
+    html = `<h2>거래명세서</h2><div class="doc-kv"><div><b>공급자</b> ${esc(g.name)}</div><div><b>공급받는 자</b> 홍천 통합물류센터(학교급식)</div><div><b>출고일</b> ${SUP.date}</div><div><b>상태</b> ${st.status}</div></div>
+      <table><thead><tr><th>No</th><th>품목</th><th>규격</th><th>단위</th><th>발주</th><th>출고</th><th>단가</th><th>금액</th><th>비고</th></tr></thead><tbody>${rows.map((r, i) => {const a = r.it.price * r.out;sum += a;return `<tr><td>${i + 1}</td><td>${esc(r.it.name)}</td><td>${esc(r.it.spec || '')}</td><td>${esc(r.it.ou || '')}</td><td class="n">${r.it.qty}</td><td class="n">${r.out}</td><td class="n">${r.it.price ? Math.round(r.it.price).toLocaleString() : '-'}</td><td class="n">${a ? Math.round(a).toLocaleString() : '-'}</td><td>${esc(st.items?.[r.it.code || r.it.name]?.reason || '')}</td></tr>`;}).join('')}</tbody>
+      <tfoot><tr><td colspan="7"><b>합계</b></td><td class="n"><b>${Math.round(sum).toLocaleString()}</b></td><td></td></tr></tfoot></table><p class="doc-note">단가는 발주 단가 → 센터 계약단가 → 최근 출고단가 순으로 적용했습니다. 시연 자료의 단가는 예시입니다.</p>`;
+  } else {
+    const bySch = {};rows.forEach(r => r.it.by.forEach(b => {(bySch[b.sid] = bySch[b.sid] || []).push({it:r.it, qty:b.qty});}));
+    html = `<h2>학교별 분류표 · ${esc(g.name)}</h2><p>${SUP.date} 출고 · 센터 분류 작업용</p>` + Object.entries(bySch).sort((a, b) => (COURSE_OF[a[0]] + a[0]).localeCompare(COURSE_OF[b[0]] + b[0])).map(([sid, its]) =>
+      `<div class="doc-sch"><h3>[코스 ${COURSE_OF[sid] || '-'}] ${esc(SCH[sid]?.name || sid)}</h3><table><tbody>${its.map(x => `<tr><td>${esc(x.it.name)}</td><td>${esc(x.it.spec || '')}</td><td class="n"><b>${x.qty}</b> ${esc(x.it.ou || '')}</td><td>${esc(x.it.storage || '')}</td><td style="width:60px">□</td></tr>`).join('')}</tbody></table></div>`).join('');
+  }
+  $('#supDocBody').innerHTML = html;$('#supDoc').hidden = false;
+}
+function supBind(){
+  $('#supMode').addEventListener('change', e => {SUP.mode = e.target.value;renderSup(true);});
+  $('#supWho').addEventListener('change', e => {SUP.who = e.target.value;SUP.sel = SUP.who;renderSup(true);});
+  $('#supDate').addEventListener('change', e => {SUP.date = e.target.value || TODAY;renderSup(true);});
+  $('#supQ').addEventListener('input', e => {SUP.q = e.target.value;renderSup(true);});
+  $('#supList').addEventListener('click', e => {const b = e.target.closest('[data-sup]');if (!b) return;SUP.sel = b.dataset.sup;renderSup(true);});
+  const cur = () => supAgg().find(g => g.name === SUP.sel);
+  $('#supDetail').addEventListener('change', e => {const g = cur();if (!g) return;const t = e.target;
+    if (t.dataset.supready){supItemSet(g, t.dataset.supready, {ready:t.checked});return;}
+    if (t.dataset.supout){const it = g.items.find(i => (i.code || i.name) === t.dataset.supout);const v = Math.max(0, Math.round(+t.value || 0));supItemSet(g, t.dataset.supout, {out:Math.min(v, it ? it.qty * 3 : v)});return;}
+    if (t.dataset.supreason != null && t.dataset.supreason !== undefined && t.matches('[data-supreason]')){supItemSet(g, t.dataset.supreason, {reason:t.value});return;}
+    if (t.id === 'supAllReady'){const st = supState(g);const items = Object.assign({}, st.items);g.items.forEach(it => {const k = it.code || it.name;items[k] = Object.assign({}, items[k] || {}, {ready:t.checked});});supSave(g, {items, status:st.status === '발주접수' ? '출고준비' : st.status});}
+  });
+  $('#supDetail').addEventListener('click', e => {const g = cur();if (!g) return;const b = e.target.closest('[data-supact]');
+    const by = e.target.closest('[data-supby]');if (by){const it = g.items.find(i => (i.code || i.name) === by.dataset.supby);if (it) toast(it.by.map(x => (SCH[x.sid]?.name || x.sid) + ' ' + x.qty + (it.ou || '')).join(' · '));return;}
+    if (!b) return;const a = b.dataset.supact;const st = supState(g);
+    if (a === 'confirm'){
+      const notReady = g.items.filter(it => !st.items?.[it.code || it.name]?.ready).length;
+      const noReason = g.items.filter(it => supItemOut(st, it) < it.qty && !st.items?.[it.code || it.name]?.reason).length;
+      if (notReady){toast(`준비 확인이 안 된 품목이 ${notReady}개 있습니다. 표 왼쪽 체크를 모두 해 주세요.`);return;}
+      if (noReason){toast(`발주보다 적게 출고하는 품목 ${noReason}개에 결품·부족 사유를 골라 주세요.`);return;}
+      const cold = g.items.some(it => /냉장|냉동/.test(it.storage || ''));const temp = $('#supTemp').value;
+      if (cold && temp === ''){toast('냉장·냉동 품목이 있어 출고 온도를 입력해야 합니다.');return;}
+      supSave(g, {status:'출고확정', eta:$('#supEta').value, car:$('#supCar').value.trim(), temp, confirmAt:Date.now()});toast(`${g.name} 출고를 확정했습니다. 센터에 입고 예정으로 표시됩니다.`);return;}
+    if (a === 'recv'){supSave(g, {status:'입고완료', recvAt:Date.now()});toast(`${g.name} 입고를 확인했습니다.`);return;}
+    if (a === 'undo'){supSave(g, {status:'출고준비', confirmAt:null});return;}
+    if (a === 'unrecv'){supSave(g, {status:'출고확정', recvAt:null});return;}
+    if (a === 'stmt' || a === 'label'){supDoc(g, a);return;}
+    if (a === 'csv'){saveCsv(`출고_${g.name}_${SUP.date}.csv`, g.name + ' 출고 내역', [['상품코드', '품목', '규격', '보관', '단위', '발주수량', '출고수량', '결품사유', '준비', '학교별 수량'], ...g.items.map(it => {const k = it.code || it.name;const x = st.items?.[k] || {};return [it.code, it.name, it.spec, it.storage, it.ou, it.qty, supItemOut(st, it), x.reason || '', x.ready ? 'Y' : '', it.by.map(b => (SCH[b.sid]?.name || b.sid) + ':' + b.qty).join(' / ')];})]);}
+  });
+  $('#supDoc').addEventListener('click', e => {if (e.target.id === 'supDoc' || e.target.closest('[data-docx]')) $('#supDoc').hidden = true;if (e.target.closest('[data-docp]')){document.body.classList.add('printing-doc');window.print();setTimeout(() => document.body.classList.remove('printing-doc'), 500);}});
+}
+function supDbInit(){if (!DB) return;DB.collection('sup_ship').limit(500).onSnapshot(sn => {sn.docs.forEach(d => SUP.ship[d.id] = d.data());renderSup();}, e => {});}
 
 /* ---------- IoT 단말·블루투스 온습도계 원격 제어 ----------
    경로: 관제(이 화면) → 기사 모바일 앱(중계) → 차량 단말(BLE 게이트웨이) → 블루투스 온습도계
@@ -2585,7 +2825,7 @@ async function loadStd(){
     STD.byCode = new Map();for (let i = 0; i < j.n; i++) STD.byCode.set(sv(i, COL.code), i);
     STD.ready = true;
   }catch(e){STD.err = e.message || String(e);}
-  stdFillFilters();if (view === 'std') renderStd();if (drawer?.sid){ordDirty = true;renderDrawer(false);}
+  stdFillFilters();if (view === 'std') renderStd();if (view === 'sup') renderSup(true);if (drawer?.sid){ordDirty = true;renderDrawer(false);}
 }
 function stdItem(code){
   if (STD.custom[code]) return Object.assign({custom:true}, STD.custom[code]);
@@ -2665,7 +2905,7 @@ async function initDb(){
   DB.collection('orders').limit(200).onSnapshot(sn => {STD.orders = {};sn.docs.forEach(d => STD.orders[d.id] = d.data());if (drawer?.sid){ordDirty = true;renderDrawer(false);}daRender(true);}, e => {});
   try{DA.adminView = USER ? await USER.canEdit() : false;}catch(e){}
   DB.collection('unload_hot').limit(1000).onSnapshot(sn => {HOT.rows = {};sn.docs.forEach(d => HOT.rows[d.id] = d.data());if (view === 'veh') renderHot(true);}, e => {});
-  iotDbInit();initDriverDb();daRender();renderAcct();dbReadyResolve();
+  iotDbInit();supDbInit();initDriverDb();daRender();renderAcct();dbReadyResolve();
 }
 async function dbWrite(fn, okMsg){
   if (!DB){toast('공유 DB에 연결되지 않아 저장할 수 없습니다. Claude에서 이 페이지를 열어 주세요.');return false;}
@@ -2916,12 +3156,14 @@ function show(v){
   if (v === 'drv' && !MAPS.drv) initDrvMap();
   Object.values(MAPS).forEach(M => setTimeout(() => M.m.invalidateSize(), 30));
   if (v === 'hub' && MAPS.hub?.fit){setTimeout(MAPS.hub.fit, 60);setTimeout(MAPS.hub.fit, 400);}
-  if (v === 'veh') renderVehDetail(true);
+  if (v === 'veh'){renderVehDetail(true);renderOdo(true);}
+  if (v === 'gis') renderOpt();
   if (v === 'del'){renderSchoolPicker();renderDelTable();renderFood();}
   if (v === 'ana') renderAna();
   if (v === 'std') renderStd();
   if (v === 'acct') renderAcct();
   if (v === 'ship') renderShip();
+  if (v === 'sup'){$('#supDate').value = SUP.date;renderSup(true);}
   if (v === 'gis') renderGis(false);
   if (v === 'cfg') renderCfg();
   refresh();
@@ -2932,7 +3174,7 @@ function refresh(){
   $('#clock').textContent = `${TODAY.slice(5).replace('-', '.')} ${hhmm(SIM)}`;
   if (view === 'wide') renderWide();
   if (view === 'hub') renderHub();
-  if (view === 'veh'){renderVehList();renderVehDetail(false);renderHot(false);}
+  if (view === 'veh'){renderVehList();renderVehDetail(false);renderHot(false);renderOdo(false);}
   if (view === 'del' && !document.activeElement?.matches?.('#delTbl select') && !$('#delTbl .confirm')){
     const sig = DEL.map(d => d.id + d.status + d.veh).join('|') + '#' + Object.entries(STD.orders).map(([k, o]) => k + (o.lines || []).length + (o.at || '')).join('|') + Object.keys(STD.center).length;if (sig !== refresh._sig){refresh._sig = sig;renderDelTable();}
   }
@@ -3075,7 +3317,14 @@ function bind(){
   $('#v-gis').addEventListener('click', e => {const b = e.target.closest('[data-gsch]');if (b){selectGisSchool(b.dataset.gsch);}});
   $('#courseCtl').addEventListener('change', e => {const t = e.target.closest('[data-relay]');if (!t) return;relayState[t.dataset.relay] = t.checked;store.set('relay', relayState);gisCourse = t.dataset.relay;planAll();renderGis(true);toast(t.checked ? '중계거점 출발로 다시 계산했습니다.' : '물류센터 출발로 다시 계산했습니다.');});
   $('#radiusKm').onchange = () => renderGis(false);
-  $('#optimize').onclick = () => {planAll();renderGis(false);const bad = Object.values(PLAN).reduce((a, p) => a + p.bad, 0);toast(`6개 코스를 다시 계산했습니다. 30분 초과 구간 ${bad}개`);};
+  $('#optCalc').onclick = () => {optimizeAll();renderOpt();drawOptLine();toast('실제 도로 기준으로 최적 코스를 다시 계산했습니다.');};
+  $('#optAll').onclick = () => {if (!Object.keys(OPT).length) optimizeAll();applyOpt(COURSES.map(c => c.id));};
+  $('#optReset').onclick = () => {store.set('optPlan', {});COURSES.forEach(c => relayState[c.id] = !!c.relay);store.set('relay', relayState);planAll();COURSES.forEach(c => {if (PLAN[c.id]) delete PLAN[c.id]._road;});renderGis(true);renderOpt();toast('기본 코스 순서로 되돌렸습니다.');};
+  $('#optTbl').addEventListener('click', e => {const v = e.target.closest('[data-optv]');if (v){optView = optView === v.dataset.optv ? null : v.dataset.optv;renderOpt();drawOptLine();return;}const a = e.target.closest('[data-opta]');if (a) applyOpt([a.dataset.opta]);});
+  $('#odoCsv').onclick = odoCsv;
+  supBind();
+  $('#odoTbl').addEventListener('click', e => {const r = e.target.closest('[data-veh]');if (!r) return;selVeh = r.dataset.veh;renderVehList();renderVehDetail(true);window.scrollTo({top:0, behavior:'smooth'});});
+  $('#optimize').onclick = () => {planAll();optimizeAll();renderOpt();renderGis(false);const bad = Object.values(PLAN).reduce((a, p) => a + p.bad, 0);toast(`6개 코스를 다시 계산했습니다. 30분 초과 구간 ${bad}개`);};
   $('#applyRoute').onclick = () => {buildHistory();toast('새 방문 순서를 다음 출발부터 적용합니다.');};
   $('#gisLayers').addEventListener('change', e => {const k = e.target.dataset.l;const G = MAPS.gis;if (!G) return;const lay = k === 'emd' ? [G.layers.emd, G.emdLbl] : [G.layers[k]];lay.forEach(l => e.target.checked ? l.addTo(G.m) : G.m.removeLayer(l));});
   // 분석
@@ -3265,6 +3514,7 @@ function daTruck(d){
     <div class="da-card"><b>냉장 제어</b><div class="stepper" style="justify-content:center"><button type="button" data-dcmd2="set-" aria-label="설정 온도 내리기">−</button><span class="val">${fmt1(v.set)}°C</span><button type="button" data-dcmd2="set+" aria-label="설정 온도 올리기">+</button></div>
       <label class="switch" style="justify-content:center"><input type="checkbox" data-dcmd2="cool" ${v.cooling ? 'checked' : ''}>냉각기 가동</label>
       <div class="cmdlog">${v.cmd.slice(-5).map(c => `<span class="${c.ack ? 'ack' : 'tx'}">${hhmm(c.t)} ${esc(c.msg)}</span>`).join('') || '<span class="tx">보낸 명령이 없습니다.</span>'}</div></div>
+    <div class="da-card"><b>오늘 운행 거리</b><div class="row" style="justify-content:space-between;margin-top:4px"><span class="mono" style="font-size:24px;font-weight:800;color:var(--navy)">${fmt1(odoOf(v).km)}<small style="font-size:13px"> km</small></span><span class="small muted">${v.run ? `코스 ${v.run.course} 진행 ${fmt1(v.run.km || 0)} / ${fmt1(courseKm(v.run.course))}km` : `완료 운행 ${odoOf(v).runs.length}회`}</span></div></div>
     ${daIotCards(v)}
     <div class="da-card"><b>최근 경보</b>${ALERTS.filter(a => a.vid === v.id).slice(0, 5).map(a => `<div class="row small"><span class="pill ${a.sev === 'crit' ? 'crit' : a.sev === 'warn' ? 'warn' : 'info'}">${hhmm(a.t)}</span>${esc(a.title)}</div>`).join('') || '<div class="small muted">경보가 없습니다.</div>'}</div>`;
 }
