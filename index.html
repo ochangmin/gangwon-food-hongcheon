@@ -1214,9 +1214,11 @@ body.driver-mode{background:#EEF2F5}
 <!-- 출고 데이터 -->
 <section class="view" id="v-sup" hidden>
   <div class="vhead"><div><h2>공급업체 출고처리</h2><p>학교 발주를 공급업체별로 묶어 보여 줍니다. 공급업체는 품목별 출고수량·결품 사유를 입력하고 출고를 확정하며, 센터는 입고(검수)를 확인합니다. 거래명세서와 학교별 분류표를 바로 출력할 수 있습니다.</p></div>
-    <div class="act"><select class="in" id="supMode" aria-label="보기"><option value="center">센터 보기 (전체)</option><option value="sup">공급업체 보기</option></select><select class="in" id="supWho" aria-label="공급업체" hidden></select><input class="in" id="supDate" type="date" aria-label="출고일"><input class="in" id="supQ" placeholder="업체·품목 검색" style="width:150px"></div></div>
-  <div class="kpis" id="supKpi"></div>
-  <div class="grid2 side"><div class="panel"><div class="ph"><h3>공급업체</h3><span class="sub">진행 단계 · 준비 품목</span></div><div class="sup-list" id="supList"></div></div><div id="supDetail"></div></div>
+    <div class="act"><select class="in" id="supMode" aria-label="보기"><option value="center">센터 보기 (전체)</option><option value="sup">공급업체 보기</option></select><select class="in" id="supWho" aria-label="공급업체" hidden></select><input class="in" id="supDate" type="date" aria-label="출고일"><input class="in" id="supQ" placeholder="업체·품목 검색" style="width:150px"><button class="btn" id="supOut" hidden></button></div></div>
+  <div id="supGate" hidden></div>
+  <div id="supBody"><div class="kpis" id="supKpi"></div>
+  <div class="grid2 side" style="margin-top:16px"><div class="panel"><div class="ph"><h3>공급업체</h3><span class="sub">진행 단계 · 준비 품목</span></div><div class="sup-list" id="supList"></div></div><div id="supDetail"></div></div>
+  <div id="supAcct"></div></div>
   <div class="sup-doc" id="supDoc" hidden><div class="sup-doc-in"><div class="row no-print" style="justify-content:flex-end;gap:6px"><button class="btn pri sm" data-docp>인쇄</button><button class="btn sm" data-docx>닫기</button></div><div id="supDocBody"></div></div></div>
 </section>
 <section class="view" id="v-ship" hidden>
@@ -2205,6 +2207,35 @@ function supAgg(){
     const it = g.items.get(k);it.qty += +l.qty;it.by.push({sid, qty:+l.qty});if (!it.price){const pr = typeof hcPrice === 'function' ? hcPrice(l, up) : {v:+l.price || 0};it.price = pr.v || 0;}}));
   return [...M.values()].map(g => Object.assign(g, {items:[...g.items.values()].sort((a, b) => a.name.localeCompare(b.name, 'ko'))})).sort((a, b) => b.items.length - a.items.length);
 }
+/* 공급업체 계정: 아이디는 업체명에서 고정 생성, 비밀번호는 센터가 설정 (sup_auth/{아이디}) */
+function supId(name){let h = 5381;for (const c of name) h = ((h * 33) ^ c.charCodeAt(0)) >>> 0;return 'sp' + h.toString(36).slice(0, 6);}
+SUP.auth = {};try{SUP.sess = JSON.parse(sessionStorage.getItem('gfl:sup') || 'null');}catch(e){SUP.sess = null;}
+if (SUP.sess && Date.now() > SUP.sess.exp) SUP.sess = null;
+if (SUP.sess){SUP.mode = 'sup';SUP.who = SUP.sess.sup;}
+async function supLogin(id, pw){
+  const msg = $('#supLgMsg');const show = t => {msg.textContent = t;};
+  id = id.trim().toLowerCase();if (!id || !pw){show('아이디와 비밀번호를 입력하세요.');return;}
+  const g = supAgg().find(x => supId(x.name) === id);
+  if (!DB){if (g && pw === '1') return supSetSess(id, g.name);show('아이디 또는 비밀번호가 맞지 않습니다. 관리자에게 문의하세요.');return;}
+  let a = SUP.auth[id];if (!a){try{const sn = await DB.doc('sup_auth/' + id).get();a = sn.exists ? sn.data() : null;}catch(e){}}
+  let ok = false;if (a){try{ok = (await pwHash(pw, a.salt, a.iter)) === a.hash;}catch(e){}}
+  if (!ok){show('아이디 또는 비밀번호가 맞지 않습니다. 관리자에게 문의하세요.');return;}
+  supSetSess(id, a.sup || g?.name || id);
+}
+function supSetSess(id, name){SUP.sess = {id, sup:name, exp:Date.now() + 12 * 3600e3};try{sessionStorage.setItem('gfl:sup', JSON.stringify(SUP.sess));}catch(e){}SUP.mode = 'sup';SUP.who = name;SUP.sel = name;$('#supMode').value = 'sup';toast(name + ' 계정으로 로그인했습니다.');renderSup(true);}
+function supLogout(){SUP.sess = null;try{sessionStorage.removeItem('gfl:sup');}catch(e){}SUP.who = '';renderSup(true);}
+async function supSetPw(id, name, pw){
+  if (!pw || pw.length < 6){toast('비밀번호는 6자 이상으로 정하세요.');return;}
+  if (!DB){toast('공유 DB가 없는 시연 화면에서는 비밀번호를 저장할 수 없습니다. (시연 비밀번호: 1)');return;}
+  const salt = b64e(crypto.getRandomValues(new Uint8Array(16)));const iter = 150000;const hash = await pwHash(pw, salt, iter);
+  await dbWrite(() => DB.doc('sup_auth/' + id).set({sup:name, salt, hash, iter, at:Date.now(), by:UID || null}), name + ' 비밀번호를 설정했습니다.');
+}
+function supAcctHtml(all){
+  return `<div class="panel" style="margin-top:16px"><div class="ph"><h3>공급업체 계정</h3><span class="sub">업체별 아이디는 자동으로 정해집니다. 센터가 비밀번호를 설정해 업체에 알려 주세요${DB ? '' : ' · 지금은 시연 화면이라 모든 업체 비밀번호가 1입니다'}</span></div>
+    <div class="tw scroll" style="max-height:420px"><table class="t"><thead><tr><th>공급업체</th><th>아이디</th><th>비밀번호</th><th>${DB ? '새 비밀번호 설정' : ''}</th></tr></thead><tbody>${all.map(g => {const id = supId(g.name);const a = SUP.auth[id];
+      return `<tr><td>${esc(g.name)}</td><td class="mono"><b>${id}</b></td><td>${DB ? (a ? `<span class="pill ok">설정됨</span> <span class="small muted">${new Date(a.at).toLocaleDateString('ko-KR')}</span>` : '<span class="pill warn">미설정</span>') : '<span class="small muted">시연: 1</span>'}</td>
+        <td>${DB ? `<span class="row" style="flex-wrap:nowrap;gap:6px"><input class="in" type="password" autocomplete="new-password" placeholder="6자 이상" data-suppw="${id}" style="width:140px"><button class="btn sm" data-supsetpw="${id}" data-name="${esc(g.name)}">설정</button></span>` : ''}</td></tr>`;}).join('')}</tbody></table></div></div>`;
+}
 function supState(g){const k = supKey(SUP.date, g.name);return SUP.ship[k] || {status:'발주접수', items:{}};}
 function supItemOut(st, it){const x = st.items?.[it.code || it.name];return x && x.out != null ? x.out : it.qty;}
 async function supSave(g, patch){
@@ -2220,15 +2251,24 @@ function supPill(s){return `<span class="pill ${{'발주접수':'', '출고준�
 function renderSup(force){
   if (view !== 'sup') return;
   const all = supAgg();const sel = $('#supWho');
+  const lockSup = !!SUP.sess;$('#supMode').disabled = lockSup;if (lockSup){$('#supMode').value = 'sup';SUP.mode = 'sup';SUP.who = SUP.sess.sup;}
+  $('#supOut').hidden = !lockSup;$('#supOut').textContent = lockSup ? `${SUP.sess.sup} · 로그아웃` : '';
+  const needLogin = SUP.mode === 'sup' && !lockSup;
+  const centerBlocked = SUP.mode === 'center' && DB && !DA.adminView;
+  $('#supGate').hidden = !(needLogin || centerBlocked);$('#supBody').hidden = needLogin || centerBlocked;
+  if (needLogin){if (!$('#supGate').querySelector('#supLgForm')) $('#supGate').innerHTML = `<form class="panel" id="supLgForm" style="max-width:420px;margin:12px auto"><div class="ph"><h3>공급업체 로그인</h3><span class="sub">센터에서 받은 아이디와 비밀번호</span></div><div class="pb" style="display:flex;flex-direction:column;gap:10px">
+      <label class="field">아이디<input class="in" id="supLgId" autocomplete="username" autocapitalize="none" placeholder="예: sp1a2b3c"></label><label class="field">비밀번호<input class="in" id="supLgPw" type="password" autocomplete="current-password"></label>
+      <button class="btn pri" type="submit">로그인</button><div class="small crit-t" id="supLgMsg"></div>${DB ? '' : '<div class="small muted">시연 화면: 아래 센터 보기의 "공급업체 계정" 표에 있는 아이디와 비밀번호 1로 들어갈 수 있습니다.</div>'}</div></form>`;return;}
+  if (centerBlocked){$('#supGate').innerHTML = '<div class="panel"><div class="pb">센터 보기는 이 대시보드 관리자만 쓸 수 있습니다. 공급업체는 "공급업체 보기"에서 로그인하세요.</div></div>';return;}
   const opts = '<option value="">공급업체 선택</option>' + all.map(g => `<option ${g.name === SUP.who ? 'selected' : ''}>${esc(g.name)}</option>`).join('');
   if (sel.dataset.o !== opts){sel.innerHTML = opts;sel.dataset.o = opts;}
-  sel.hidden = SUP.mode !== 'sup';
+  sel.hidden = true;
   let list = SUP.mode === 'sup' ? all.filter(g => g.name === SUP.who) : all;
   const q = SUP.q.trim();if (q) list = list.filter(g => g.name.includes(q) || g.items.some(i => i.name.includes(q)));
   if (!SUP.sel || !list.find(g => g.name === SUP.sel)) SUP.sel = list[0]?.name || null;
-  const sts = all.map(g => supState(g));const cnt = s => sts.filter(x => x.status === s).length;
-  const short = all.reduce((a, g) => a + g.items.filter(it => {const x = supState(g).items?.[it.code || it.name];return x && x.out != null && x.out < it.qty;}).length, 0);
-  $('#supKpi').innerHTML = kpi('공급업체', all.length, '곳', SUP.date + ' 출고분') + kpi('출고확정', cnt('출고확정') + cnt('입고완료'), '/ ' + all.length, '공급업체 처리', cnt('출고확정') + cnt('입고완료') === all.length && all.length ? 'ok' : '') + kpi('센터 입고완료', cnt('입고완료'), '/ ' + all.length, '검수 확인') + kpi('결품·부족 품목', short, '건', '발주보다 적게 출고', short ? 'warn' : 'ok');
+  const allV = SUP.sess ? all.filter(g => g.name === SUP.who) : all;const sts = allV.map(g => supState(g));const cnt = s => sts.filter(x => x.status === s).length;
+  const short = allV.reduce((a, g) => a + g.items.filter(it => {const x = supState(g).items?.[it.code || it.name];return x && x.out != null && x.out < it.qty;}).length, 0);
+  $('#supKpi').innerHTML = kpi('공급업체', allV.length, '곳', SUP.date + ' 출고분') + kpi('출고확정', cnt('출고확정') + cnt('입고완료'), '/ ' + allV.length, '공급업체 처리', cnt('출고확정') + cnt('입고완료') === allV.length && allV.length ? 'ok' : '') + kpi('센터 입고완료', cnt('입고완료'), '/ ' + allV.length, '검수 확인') + kpi('결품·부족 품목', short, '건', '발주보다 적게 출고', short ? 'warn' : 'ok');
   $('#supList').innerHTML = list.map(g => {const st = supState(g);const ready = g.items.filter(it => st.items?.[it.code || it.name]?.ready).length;
     return `<button class="sup-li ${g.name === SUP.sel ? 'on' : ''}" data-sup="${esc(g.name)}"><span class="row" style="justify-content:space-between;flex-wrap:nowrap"><b>${esc(g.name)}</b>${supPill(st.status)}</span>
       <span class="small muted">품목 ${g.items.length} · 학교 ${g.schools.size} · 준비 ${ready}/${g.items.length}</span><div class="sup-bar"><i style="width:${Math.round((SUP_ST.indexOf(st.status)) / 3 * 100)}%"></i></div></button>`;}).join('') || '<div class="empty small">표시할 공급업체가 없습니다. 학교 발주가 있어야 출고 목록이 만들어집니다.</div>';
@@ -2252,6 +2292,7 @@ function renderSup(force){
       ${st.status === '출고확정' && center ? '<button class="btn pri" data-supact="recv">센터 입고 확인</button><button class="btn" data-supact="undo">출고확정 취소</button>' : ''}
       ${st.status === '입고완료' && center ? '<button class="btn" data-supact="unrecv">입고 확인 취소</button>' : ''}
       <span style="flex:1"></span><button class="btn" data-supact="stmt">거래명세서</button><button class="btn" data-supact="label">학교별 분류표</button><button class="btn" data-supact="csv">CSV</button></div></div>`;
+  $('#supAcct').innerHTML = center ? supAcctHtml(all) : '';
 }
 function supDoc(g, kind){
   const st = supState(g);const rows = g.items.map(it => ({it, out:supItemOut(st, it)}));
@@ -2268,7 +2309,10 @@ function supDoc(g, kind){
   $('#supDocBody').innerHTML = html;$('#supDoc').hidden = false;
 }
 function supBind(){
-  $('#supMode').addEventListener('change', e => {SUP.mode = e.target.value;renderSup(true);});
+  $('#supMode').addEventListener('change', e => {SUP.mode = e.target.value;if (SUP.mode === 'center') SUP.who = '';renderSup(true);});
+  $('#supGate').addEventListener('submit', e => {if (e.target.id === 'supLgForm'){e.preventDefault();const pw = $('#supLgPw').value;$('#supLgPw').value = '';supLogin($('#supLgId').value, pw);}});
+  $('#supOut').addEventListener('click', supLogout);
+  $('#supAcct').addEventListener('click', e => {const b = e.target.closest('[data-supsetpw]');if (!b) return;const inp = $(`[data-suppw="${b.dataset.supsetpw}"]`);const pw = inp.value;inp.value = '';supSetPw(b.dataset.supsetpw, b.dataset.name, pw);});
   $('#supWho').addEventListener('change', e => {SUP.who = e.target.value;SUP.sel = SUP.who;renderSup(true);});
   $('#supDate').addEventListener('change', e => {SUP.date = e.target.value || TODAY;renderSup(true);});
   $('#supQ').addEventListener('input', e => {SUP.q = e.target.value;renderSup(true);});
@@ -2299,7 +2343,7 @@ function supBind(){
   });
   $('#supDoc').addEventListener('click', e => {if (e.target.id === 'supDoc' || e.target.closest('[data-docx]')) $('#supDoc').hidden = true;if (e.target.closest('[data-docp]')){document.body.classList.add('printing-doc');window.print();setTimeout(() => document.body.classList.remove('printing-doc'), 500);}});
 }
-function supDbInit(){if (!DB) return;DB.collection('sup_ship').limit(500).onSnapshot(sn => {sn.docs.forEach(d => SUP.ship[d.id] = d.data());renderSup();}, e => {});}
+function supDbInit(){if (!DB) return;if (DA.adminView) DB.collection('sup_auth').limit(500).onSnapshot(sn => {SUP.auth = {};sn.docs.forEach(d => {const x = d.data();SUP.auth[d.id] = {sup:x.sup, at:x.at, salt:x.salt, iter:x.iter, hash:x.hash};});renderSup();}, e => {});DB.collection('sup_ship').limit(500).onSnapshot(sn => {sn.docs.forEach(d => SUP.ship[d.id] = d.data());renderSup();}, e => {});}
 
 /* ---------- IoT 단말·블루투스 온습도계 원격 제어 ----------
    경로: 관제(이 화면) → 기사 모바일 앱(중계) → 차량 단말(BLE 게이트웨이) → 블루투스 온습도계
