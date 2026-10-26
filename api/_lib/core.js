@@ -19,7 +19,7 @@ function enc(obj){
 }
 function dec(s){
   if (typeof s !== 'string') return null;
-  if (!s.startsWith('e1:')) return JSON.parse(s); // 암호화 이전 데이터
+  if (!s.startsWith('e1:')) throw new Error('unencrypted_record'); // 암호화되지 않은 값은 위·변조로 보고 거부
   const b = Buffer.from(s.slice(3), 'base64');const d = crypto.createDecipheriv('aes-256-gcm', DEK, b.subarray(0, 12));d.setAuthTag(b.subarray(12, 28));
   return JSON.parse(Buffer.concat([d.update(b.subarray(28)), d.final()]).toString('utf8'));
 }
@@ -56,7 +56,8 @@ function newHash(pw){const salt = crypto.randomBytes(16).toString('base64');cons
 function checkPw(pw, rec){if (!rec || !rec.salt || !rec.hash) return false;const h = pwHash(pw, rec.salt, rec.iter || 150000);return crypto.timingSafeEqual(Buffer.from(h), Buffer.from(rec.hash));}
 
 // ── 토큰 (HMAC 서명) ──
-let SECRET = process.env.AUTH_SECRET || null;
+// 서명 키: AUTH_SECRET 환경변수 → 없으면 DATA_ENC_KEY에서 파생(저장소에 두지 않음) → 둘 다 없을 때만 저장소 값
+let SECRET = process.env.AUTH_SECRET || (DEK ? crypto.createHmac('sha256', DEK).update('gwfood-auth-secret-v1').digest('base64') : null);
 async function secret(){
   if (SECRET) return SECRET;
   let s = await redis(['GET', 'sys:secret']);
@@ -74,10 +75,15 @@ async function verify(tok){
 async function who(req){const h = req.headers.authorization || '';return verify(h.startsWith('Bearer ') ? h.slice(7) : null);}
 
 // 로그인 시도 제한: 같은 IP·계정 10분에 10회
+// 같은 IP·계정 10분 10회, 같은 계정(모든 IP 합산) 10분 30회. IP는 Vercel이 넣는 값만 사용(위조 불가)
+function clientIp(req){return String(req.headers['x-vercel-forwarded-for'] || req.headers['x-real-ip'] || '').split(',')[0].trim() || 'x';}
 async function rateOk(req, key){
-  const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'x';
-  const k = 'rl:' + ip + ':' + key;const [n] = await pipeline([['INCR', k], ['EXPIRE', k, 600]]);return n <= 10;
+  const k1 = 'rl:' + clientIp(req) + ':' + key, k2 = 'rla:' + key;
+  const [n1, , n2] = await pipeline([['INCR', k1], ['EXPIRE', k1, 600], ['INCR', k2], ['EXPIRE', k2, 600]]);return n1 <= 10 && n2 <= 30;
 }
+// 최초 관리자 설정 코드(환경변수 ADMIN_SETUP_CODE) — 저장소를 먼저 연 사람이 관리자를 가로채지 못하게
+function setupCodeOk(code){const want = process.env.ADMIN_SETUP_CODE || '';if (!want || !code) return false;
+  const a = crypto.createHash('sha256').update(String(code)).digest(), b = crypto.createHash('sha256').update(want).digest();return crypto.timingSafeEqual(a, b);}
 
 async function body(req){
   if (req.body && typeof req.body === 'object') return req.body;
@@ -114,4 +120,4 @@ async function ledgerTail(n){
   return rows.map(r => {const p1 = r.indexOf('|'), p2 = r.indexOf('|', p1 + 1);const payload = r.slice(p2 + 1);const body = payload.slice(payload.indexOf('|') + 1);let e = {};try{e = JSON.parse(body);}catch(x){}return Object.assign({hash:r.slice(0, p1)}, e);}).reverse();
 }
 
-module.exports = {encReady, sha256, ledger, ledgerVerify, ledgerTail, configured, redis, pipeline, splitPath, getDoc, putDoc, delDoc, listCol, newHash, checkPw, sign, verify, who, rateOk, body, send, COL_RE};
+module.exports = {setupCodeOk, encReady, sha256, ledger, ledgerVerify, ledgerTail, configured, redis, pipeline, splitPath, getDoc, putDoc, delDoc, listCol, newHash, checkPw, sign, verify, who, rateOk, body, send, COL_RE};

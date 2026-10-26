@@ -9,5 +9,5 @@ module.exports = async (req, res) => {
     if (b.op === 'verify') return C.send(res, 200, await C.ledgerVerify());
     if (b.op === 'tail') return C.send(res, 200, {rows:await C.ledgerTail(Math.min(200, Math.max(1, +b.n || 30)))});
     return C.send(res, 400, {error:'op'});
-  }catch(e){return C.send(res, 500, {error:'server', message:String(e.message || e).slice(0, 200)});}
+  }catch(e){console.error('[api]', e);return C.send(res, 500, {error:'server'});}
 };

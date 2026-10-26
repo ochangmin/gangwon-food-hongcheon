@@ -64,6 +64,15 @@ import java.util.UUID;
 public class MainActivity extends Activity {
     static final String HOME = "https://www.xn--kj0b080b.shop/?app=android#driver";
     static final String HOST = "www.xn--kj0b080b.shop";
+    // 지금 열린 페이지의 주소 — 앱 기능(블루투스·바깥 링크)은 급식.shop 페이지에서만 허용
+    volatile String curHost = "";
+    static String hostOf(String url){try{Uri u = Uri.parse(url);return "https".equals(u.getScheme()) ? String.valueOf(u.getHost()) : "";}catch(Exception e){return "";}}
+    boolean trusted(){return HOST.equals(curHost);}
+    void openExternal(Uri u){
+        String sc = u == null ? "" : String.valueOf(u.getScheme()).toLowerCase();
+        if (!(sc.equals("https") || sc.equals("http") || sc.equals("tel") || sc.equals("geo") || sc.equals("kakaomap") || sc.equals("nmap"))) return;
+        try{Intent i = new Intent(Intent.ACTION_VIEW, u);i.addCategory(Intent.CATEGORY_BROWSABLE);startActivity(i);}catch(Exception e){}
+    }
     static final int REQ_LOC = 11, REQ_BT = 12, REQ_FILE = 13;
 
     static final UUID ESS = uuid16(0x181A), TEMP = uuid16(0x2A6E), HUM = uuid16(0x2A6F);
@@ -115,6 +124,9 @@ public class MainActivity extends Activity {
         s.setDatabaseEnabled(true);
         s.setGeolocationEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(true);
+        // 보안: 기기 파일·콘텐츠 접근 차단, http 혼합 콘텐츠 차단
+        s.setAllowFileAccess(false);s.setAllowContentAccess(false);
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         s.setUserAgentString(s.getUserAgentString() + " GwFoodDriver/1.2");
         // 글씨 크기: 기본 130%, 기사 화면 '내 정보'에서 조절한 값이 있으면 그 값
         s.setTextZoom(getSharedPreferences("gw", MODE_PRIVATE).getInt("zoom", 130));
@@ -123,15 +135,16 @@ public class MainActivity extends Activity {
         s.setSupportZoom(false);
         web.addJavascriptInterface(new Bridge(), "AndroidBLE");
         web.setWebViewClient(new WebViewClient(){
-            @Override public void onPageFinished(WebView v, String url){if (splash.getVisibility() == View.VISIBLE) ui.postDelayed(() -> splash.setVisibility(View.GONE), 400);}
+            @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap f){curHost = hostOf(url);}
+            @Override public void onPageFinished(WebView v, String url){curHost = hostOf(url);if (splash.getVisibility() == View.VISIBLE) ui.postDelayed(() -> splash.setVisibility(View.GONE), 400);}
             @Override public void onReceivedError(WebView v, WebResourceRequest r, WebResourceError e){
                 if (r.isForMainFrame()){offline.setVisibility(View.VISIBLE);splash.setVisibility(View.GONE);}
             }
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r){
                 Uri u = r.getUrl();
-                if (HOST.equals(u.getHost())) return false;
-                // 카카오맵 등 바깥 링크는 휴대폰 브라우저·지도 앱으로
-                try{startActivity(new Intent(Intent.ACTION_VIEW, u));}catch(Exception e){}
+                if ("https".equals(u.getScheme()) && HOST.equals(u.getHost())) return false;
+                // 카카오맵 등 바깥 링크는 휴대폰 브라우저·지도 앱으로 (안전한 주소 형식만)
+                openExternal(u);
                 return true;
             }
         });
@@ -144,6 +157,7 @@ public class MainActivity extends Activity {
                 return true;
             }
             @Override public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback cb){
+                if (!("https://" + HOST).equals(origin) && !("https://" + HOST + "/").equals(origin)){cb.invoke(origin, false, false);return;}
                 if (hasLoc()){cb.invoke(origin, true, false);return;}
                 geoCb = cb;geoOrigin = origin;
                 requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOC);
@@ -189,13 +203,13 @@ public class MainActivity extends Activity {
             BluetoothManager m = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
             return m != null && m.getAdapter() != null;
         }
-        @JavascriptInterface public void pick(){ui.post(MainActivity.this::beginPick);}
+        @JavascriptInterface public void pick(){if (!trusted()) return;ui.post(MainActivity.this::beginPick);}
         @JavascriptInterface public void disconnect(String id){ui.post(() -> {BluetoothGatt g = gatts.remove(id);if (g != null) try{g.disconnect();g.close();}catch(SecurityException e){}});}
         @JavascriptInterface public String version(){return "1.2";}
         @JavascriptInterface public int versionCode(){try{android.content.pm.PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);return Build.VERSION.SDK_INT >= 28 ? (int) pi.getLongVersionCode() : pi.versionCode;}catch(Exception e){return 0;}}
         // 운행 중에는 화면이 꺼지지 않게
         @JavascriptInterface public void keepScreenOn(boolean on){ui.post(() -> {if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);});}
-        @JavascriptInterface public void openUrl(String url){ui.post(() -> {try{startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));}catch(Exception e){}});}
+        @JavascriptInterface public void openUrl(String url){if (!trusted()) return;ui.post(() -> openExternal(Uri.parse(url)));}
         @JavascriptInterface public void reload(){ui.post(() -> web.reload());}
         @JavascriptInterface public int getTextZoom(){return web.getSettings().getTextZoom();}
         @JavascriptInterface public void setTextZoom(int z){

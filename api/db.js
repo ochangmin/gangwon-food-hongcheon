@@ -41,5 +41,5 @@ module.exports = async (req, res) => {
       return C.send(res, 200, {ok:true});
     }
     return C.send(res, 400, {error:'op'});
-  }catch(e){return C.send(res, 500, {error:'server', message:String(e.message || e).slice(0, 200)});}
+  }catch(e){console.error('[api]', e);return C.send(res, 500, {error:'server'});}
 };

@@ -28,8 +28,6 @@ jobs:
         run: gradle -p android assembleRelease --no-daemon --stacktrace
       - name: 파일 이름 정리
         run: cp android/app/build/outputs/apk/release/app-release.apk gwfood-driver.apk && ls -la gwfood-driver.apk
-      - uses: actions/upload-artifact@v4
-        with: {name: gwfood-driver, path: gwfood-driver.apk}
       - name: 사이트 다운로드 폴더에 올리기 (저장소가 비공개여도 급식.shop에서 받을 수 있게)
         run: |
           git config user.name "github-actions[bot]"
