@@ -10,8 +10,16 @@ const configured = () => !!(URL_ && TOKEN_);
 // ── 저장 데이터 암호화 (AES-256-GCM) ──
 // Vercel 환경변수 DATA_ENC_KEY (32바이트를 base64로) 가 있어야 데이터 읽기·쓰기를 허용한다.
 // 키는 저장소(Redis)와 분리돼 있으므로, 저장소 내용이 새어도 키 없이는 읽을 수 없다.
-const DEK = (() => {try{const b = Buffer.from(process.env.DATA_ENC_KEY || '', 'base64');return b.length === 32 ? b : null;}catch(e){return null;}})();
-const encReady = () => !!DEK;
+// 키 위치: 환경변수 DATA_ENC_KEY(권장) → 없으면 저장소 첫 사용 때 자동 생성(sys:dek). 저장소만 연결하면 바로 쓸 수 있게
+let DEK = (() => {try{const b = Buffer.from(process.env.DATA_ENC_KEY || '', 'base64');return b.length === 32 ? b : null;}catch(e){return null;}})();
+const KEY_SRC = DEK ? 'env' : 'store';
+async function dek(){
+  if (DEK) return DEK;
+  let v = await redis(['GET', 'sys:dek']);
+  if (!v){await redis(['SET', 'sys:dek', crypto.randomBytes(32).toString('base64'), 'NX']);v = await redis(['GET', 'sys:dek']);}
+  const b = Buffer.from(String(v), 'base64');if (b.length !== 32) throw new Error('bad_key');return DEK = b;
+}
+const encReady = () => configured();
 function enc(obj){
   const iv = crypto.randomBytes(12);const c = crypto.createCipheriv('aes-256-gcm', DEK, iv);
   const ct = Buffer.concat([c.update(JSON.stringify(obj), 'utf8'), c.final()]);
@@ -41,11 +49,11 @@ async function pipeline(cmds){
 const COL_RE = /^[A-Za-z0-9_\-]{1,60}$/, ID_RE = /^[A-Za-z0-9_\-.~:@+]{1,200}$/;
 function splitPath(p){const a = String(p || '').split('/');if (a.length !== 2 || !COL_RE.test(a[0]) || !ID_RE.test(a[1])) return null;return {col:a[0], id:a[1]};}
 
-async function getDoc(col, id){const v = await redis(['HGET', 'c:' + col, id]);return v ? dec(v) : null;}
-async function putDoc(col, id, data){await redis(['HSET', 'c:' + col, id, enc(data)]);}
+async function getDoc(col, id){await dek();const v = await redis(['HGET', 'c:' + col, id]);return v ? dec(v) : null;}
+async function putDoc(col, id, data){await dek();await redis(['HSET', 'c:' + col, id, enc(data)]);}
 async function delDoc(col, id){await redis(['HDEL', 'c:' + col, id]);}
 async function listCol(col){
-  const flat = await redis(['HGETALL', 'c:' + col]) || [];const out = [];
+  await dek();const flat = await redis(['HGETALL', 'c:' + col]) || [];const out = [];
   for (let i = 0; i < flat.length; i += 2){try{out.push({id:flat[i], data:dec(flat[i + 1])});}catch(e){}}
   return out;
 }
@@ -57,12 +65,10 @@ function checkPw(pw, rec){if (!rec || !rec.salt || !rec.hash) return false;const
 
 // ── 토큰 (HMAC 서명) ──
 // 서명 키: AUTH_SECRET 환경변수 → 없으면 DATA_ENC_KEY에서 파생(저장소에 두지 않음) → 둘 다 없을 때만 저장소 값
-let SECRET = process.env.AUTH_SECRET || (DEK ? crypto.createHmac('sha256', DEK).update('gwfood-auth-secret-v1').digest('base64') : null);
+let SECRET = process.env.AUTH_SECRET || null;
 async function secret(){
   if (SECRET) return SECRET;
-  let s = await redis(['GET', 'sys:secret']);
-  if (!s){s = crypto.randomBytes(32).toString('base64');await redis(['SET', 'sys:secret', s, 'NX']);s = await redis(['GET', 'sys:secret']);}
-  return SECRET = s;
+  return SECRET = crypto.createHmac('sha256', await dek()).update('gwfood-auth-secret-v1').digest('base64');
 }
 const b64u = b => Buffer.from(b).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 async function sign(claims){const body = b64u(JSON.stringify(claims));const mac = b64u(crypto.createHmac('sha256', await secret()).update(body).digest());return body + '.' + mac;}
@@ -95,8 +101,12 @@ async function rateOk(req, key){
   const [n1, , n2] = await pipeline([['INCR', k1], ['EXPIRE', k1, 600], ['INCR', k2], ['EXPIRE', k2, 600]]);return n1 <= 10 && n2 <= 30;
 }
 // 최초 관리자 설정 코드(환경변수 ADMIN_SETUP_CODE) — 저장소를 먼저 연 사람이 관리자를 가로채지 못하게
-function setupCodeOk(code){const want = process.env.ADMIN_SETUP_CODE || '';if (!want || !code) return false;
-  const a = crypto.createHash('sha256').update(String(code)).digest(), b = crypto.createHash('sha256').update(want).digest();return crypto.timingSafeEqual(a, b);}
+// 최초 설정 코드: 환경변수 ADMIN_SETUP_CODE 가 있으면 그것, 없으면 발급해 둔 코드(여기에는 SHA-256 값만 둠)
+const SETUP_HASH = 'ed01dc314e921301fe34e0ea319f8bf357ab693271b96091f264be02e8a7b66b';
+function setupCodeOk(code){if (!code) return false;
+  const a = crypto.createHash('sha256').update(String(code).trim().toUpperCase()).digest();
+  const b = process.env.ADMIN_SETUP_CODE ? crypto.createHash('sha256').update(String(process.env.ADMIN_SETUP_CODE).trim().toUpperCase()).digest() : Buffer.from(SETUP_HASH, 'hex');
+  return crypto.timingSafeEqual(a, b);}
 
 async function body(req){
   if (req.body && typeof req.body === 'object') return req.body;
@@ -133,4 +143,4 @@ async function ledgerTail(n){
   return rows.map(r => {const p1 = r.indexOf('|'), p2 = r.indexOf('|', p1 + 1);const payload = r.slice(p2 + 1);const body = payload.slice(payload.indexOf('|') + 1);let e = {};try{e = JSON.parse(body);}catch(x){}return Object.assign({hash:r.slice(0, p1)}, e);}).reverse();
 }
 
-module.exports = {cookieTok, SESSION_MS, sessionCookie, ID_OK, ROLES, pwOk, publicUser, setupCodeOk, encReady, sha256, ledger, ledgerVerify, ledgerTail, configured, redis, pipeline, splitPath, getDoc, putDoc, delDoc, listCol, newHash, checkPw, sign, verify, who, rateOk, body, send, COL_RE};
+module.exports = {dek, KEY_SRC, cookieTok, SESSION_MS, sessionCookie, ID_OK, ROLES, pwOk, publicUser, setupCodeOk, encReady, sha256, ledger, ledgerVerify, ledgerTail, configured, redis, pipeline, splitPath, getDoc, putDoc, delDoc, listCol, newHash, checkPw, sign, verify, who, rateOk, body, send, COL_RE};
