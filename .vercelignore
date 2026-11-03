@@ -1,4 +1,5 @@
-android
+*.md
 .github
 README.md
-*.md
+android
+selfhost

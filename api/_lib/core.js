@@ -87,7 +87,8 @@ async function who(req){
   return c;
 }
 const SESSION_MS = 12 * 3600e3;
-function sessionCookie(tok, maxAgeS){return `gs=${encodeURIComponent(tok)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeS}`;}
+// 자체 설치형을 내부망 http 로 시험할 때만 COOKIE_INSECURE=1 (운영은 https 권장)
+function sessionCookie(tok, maxAgeS){return `gs=${encodeURIComponent(tok)}; Path=/; HttpOnly;${process.env.COOKIE_INSECURE === '1' ? '' : ' Secure;'} SameSite=Lax; Max-Age=${maxAgeS}`;}
 const ID_OK = /^[a-z0-9][a-z0-9._-]{2,31}$/;
 const ROLES = ['admin', 'staff', 'viewer', 'sup', 'driver', 'school'];
 function pwOk(pw){pw = String(pw || '');return pw.length >= 10 && /[A-Za-z]/.test(pw) && /[0-9]/.test(pw);}

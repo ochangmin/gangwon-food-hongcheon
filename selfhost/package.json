@@ -1,0 +1,10 @@
+{
+  "name": "gwfood-hongcheon-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "강원 먹거리 이음 — 자체 설치형 서버 (화면·API·회원 로그인·내장 저장소)",
+  "main": "server/server.js",
+  "scripts": {"start": "node server/server.js", "backup": "node server/backup.js export", "restore": "node server/backup.js import"},
+  "engines": {"node": ">=18"},
+  "license": "UNLICENSED"
+}

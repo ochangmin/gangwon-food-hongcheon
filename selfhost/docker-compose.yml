@@ -1,0 +1,13 @@
+# 실행: docker compose up -d     ·  자료는 ./storage 폴더에 남습니다
+services:
+  gwfood:
+    build: .
+    container_name: gwfood
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./storage:/app/storage
