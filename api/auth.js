@@ -1,65 +1,67 @@
-// POST /api/auth
-//  {op:'status'}                         → 저장소 연결 여부, 관리자 설정 여부
-//  {op:'setup', pw}                      → 최초 1회: 센터 관리자 비밀번호 설정 (관리자가 없을 때만)
-//  {op:'login', role:'admin', pw}
-//  {op:'login', role:'sup', id, pw}      → sup_auth/{id}
-//  {op:'login', role:'driver', id, pw}   → drivers(loginId 또는 문서 id) + auth/{기사id}
-//  {op:'admin_pw', pw, newPw}            → 관리자 비밀번호 변경
+// POST /api/auth — 회원 로그인 (계정은 users/{아이디}, 센터 관리자가 발급)
+//  {op:'status'}                              → 저장소·암호화 준비 여부, 최초 관리자 필요 여부
+//  {op:'setup', setupCode, id, name, pw}      → 최초 1회: 관리자 계정 만들기 (환경변수 ADMIN_SETUP_CODE 필요)
+//  {op:'login', id, pw}                       → 로그인 (HttpOnly 세션 쿠키 + 토큰)
+//  {op:'me'}                                  → 지금 로그인한 계정
+//  {op:'change_pw', pw, newPw}                → 내 비밀번호 바꾸기
+//  {op:'logout'}                              → 로그아웃 (쿠키 삭제)
 const C = require('./_lib/core');
-const DAY = 12 * 3600e3;
+
+async function issue(res, id, u){
+  const claims = {uid:id, role:u.role, name:u.name || id, sup:u.sup || null, sid:u.sid || null, tv:u.tv || 0, exp:Date.now() + C.SESSION_MS};
+  if (u.role === 'driver' && u.driverId){claims.sub = u.driverId;claims.driverId = u.driverId;const d = await C.getDoc('drivers', u.driverId).catch(() => null);claims.veh = d && d.veh || null;}
+  else claims.sub = id;
+  const token = await C.sign(claims);
+  res.setHeader('Set-Cookie', C.sessionCookie(token, Math.floor(C.SESSION_MS / 1000)));
+  return Object.assign({token, id, exp:claims.exp}, C.publicUser(id, u), {veh:claims.veh || null});
+}
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return C.send(res, 405, {error:'method'});
   const b = await C.body(req);
   if (b.op === 'status'){
-    if (!C.configured()) return C.send(res, 200, {configured:false});
-    try{const a = await C.redis(['GET', 'sys:admin']);return C.send(res, 200, {configured:C.encReady(), storage:true, encryption:C.encReady(), hasAdmin:!!a});}
-    catch(e){return C.send(res, 200, {configured:false, error:String(e.message).slice(0, 120)});}
+    if (!C.configured() || !C.encReady()) return C.send(res, 200, {configured:false});
+    try{const n = Number(await C.redis(['GET', 'sys:admins']) || 0);return C.send(res, 200, {configured:true, setupNeeded:n < 1, setupCode:!!process.env.ADMIN_SETUP_CODE});}
+    catch(e){console.error('[auth]', e);return C.send(res, 200, {configured:false});}
   }
-  if (!C.configured()) return C.send(res, 503, {error:'storage_not_configured'});
-  if (!C.encReady()) return C.send(res, 503, {error:'암호화 키(DATA_ENC_KEY)가 설정되지 않았습니다.'});
+  if (b.op === 'logout'){res.setHeader('Set-Cookie', C.sessionCookie('', 0));return C.send(res, 200, {ok:true});}
+  if (!C.configured() || !C.encReady()) return C.send(res, 503, {error:'회원 저장소가 아직 연결되지 않았습니다.'});
+  const bad = () => C.send(res, 401, {error:'아이디 또는 비밀번호가 맞지 않습니다. 관리자에게 문의하세요.'});
   try{
-    const bad = () => C.send(res, 401, {error:'아이디 또는 비밀번호가 맞지 않습니다. 관리자에게 문의하세요.'});
     if (b.op === 'setup'){
       if (!process.env.ADMIN_SETUP_CODE) return C.send(res, 403, {error:'최초 설정 코드(ADMIN_SETUP_CODE)가 서버에 설정되지 않았습니다.'});
       if (!(await C.rateOk(req, 'setup'))) return C.send(res, 429, {error:'시도가 많습니다. 10분 뒤 다시 시도하세요.'});
       if (!C.setupCodeOk(b.setupCode)) return C.send(res, 401, {error:'최초 설정 코드가 맞지 않습니다.'});
-      if (!b.pw || String(b.pw).length < 10 || !/[A-Za-z]/.test(b.pw) || !/[0-9]/.test(b.pw)) return C.send(res, 400, {error:'관리자 비밀번호는 영문·숫자를 섞어 10자 이상이어야 합니다.'});
-      if (!b.pw || String(b.pw).length < 8) return C.send(res, 400, {error:'관리자 비밀번호는 8자 이상이어야 합니다.'});
-      const ok = await C.redis(['SET', 'sys:admin', JSON.stringify(C.newHash(b.pw)), 'NX']);
-      if (!ok) return C.send(res, 409, {error:'이미 관리자 비밀번호가 설정되어 있습니다.'});
-      return C.send(res, 200, {token:await C.sign({role:'admin', sub:'admin', exp:Date.now() + DAY}), role:'admin'});
+      if (Number(await C.redis(['GET', 'sys:admins']) || 0) > 0) return C.send(res, 409, {error:'이미 관리자 계정이 있습니다. 로그인하세요.'});
+      const id = String(b.id || '').trim().toLowerCase();
+      if (!C.ID_OK.test(id)) return C.send(res, 400, {error:'아이디는 영문 소문자·숫자로 3~32자입니다.'});
+      if (!C.pwOk(b.pw)) return C.send(res, 400, {error:'비밀번호는 영문·숫자를 섞어 10자 이상이어야 합니다.'});
+      const u = Object.assign({name:String(b.name || '센터 관리자').slice(0, 40), role:'admin', active:true, tv:0, createdAt:Date.now(), by:'setup'}, C.newHash(b.pw));
+      await C.putDoc('users', id, u);await C.redis(['SET', 'sys:admins', '1']);
+      await C.ledger({at:Date.now(), col:'users', id, op:'setup', by:'setup', doc:null});
+      return C.send(res, 200, await issue(res, id, u));
     }
     if (b.op === 'login'){
-      const role = b.role;const id = String(b.id || '').trim().toLowerCase();
-      if (!(await C.rateOk(req, role + ':' + id))) return C.send(res, 429, {error:'로그인 시도가 많습니다. 10분 뒤 다시 시도하세요.'});
-      if (role === 'admin'){
-        const rec = JSON.parse(await C.redis(['GET', 'sys:admin']) || 'null');
-        if (!rec || !C.checkPw(b.pw, rec)) return bad();
-        return C.send(res, 200, {token:await C.sign({role:'admin', sub:'admin', exp:Date.now() + DAY}), role:'admin'});
-      }
-      if (role === 'sup'){
-        const rec = await C.getDoc('sup_auth', id);
-        if (!rec || !C.checkPw(b.pw, rec)) return bad();
-        return C.send(res, 200, {token:await C.sign({role:'sup', sub:id, sup:rec.sup, exp:Date.now() + DAY}), role:'sup', sup:rec.sup, id});
-      }
-      if (role === 'driver'){
-        const ds = await C.listCol('drivers');
-        const d = ds.find(x => String((x.data && x.data.loginId) || x.id).toLowerCase() === id);
-        if (!d) return bad();
-        const rec = await C.getDoc('auth', d.id);
-        if (!rec || !C.checkPw(b.pw, rec)) return bad();
-        return C.send(res, 200, {token:await C.sign({role:'driver', sub:d.id, veh:d.data.veh || null, exp:Date.now() + DAY}), role:'driver', driverId:d.id, authAt:rec.at || null});
-      }
-      return C.send(res, 400, {error:'role'});
+      const id = String(b.id || '').trim().toLowerCase();
+      if (!(await C.rateOk(req, 'login:' + id))) return C.send(res, 429, {error:'로그인 시도가 많습니다. 10분 뒤 다시 시도하세요.'});
+      if (!C.ID_OK.test(id)) return bad();
+      const u = await C.getDoc('users', id);
+      if (!u || !C.checkPw(b.pw, u)) return bad();
+      if (u.active === false) return C.send(res, 403, {error:'사용이 중지된 계정입니다. 관리자에게 문의하세요.'});
+      u.lastLogin = Date.now();await C.putDoc('users', id, u);
+      return C.send(res, 200, await issue(res, id, u));
     }
-    if (b.op === 'admin_pw'){
-      const u = await C.who(req);if (!u || u.role !== 'admin') return C.send(res, 401, {error:'login'});
-      const rec = JSON.parse(await C.redis(['GET', 'sys:admin']) || 'null');
-      if (!rec || !C.checkPw(b.pw, rec)) return bad();
-      if (!b.newPw || String(b.newPw).length < 10 || !/[A-Za-z]/.test(b.newPw) || !/[0-9]/.test(b.newPw)) return C.send(res, 400, {error:'새 비밀번호는 영문·숫자를 섞어 10자 이상이어야 합니다.'});
-      await C.redis(['SET', 'sys:admin', JSON.stringify(C.newHash(b.newPw))]);
-      return C.send(res, 200, {ok:true});
+    const me = await C.who(req);if (!me || !me.uid) return C.send(res, 401, {error:'login'});
+    if (b.op === 'me'){const u = await C.getDoc('users', me.uid);return C.send(res, 200, Object.assign(C.publicUser(me.uid, u), {exp:me.exp}));}
+    if (b.op === 'change_pw'){
+      if (!(await C.rateOk(req, 'pw:' + me.uid))) return C.send(res, 429, {error:'시도가 많습니다. 10분 뒤 다시 시도하세요.'});
+      const u = await C.getDoc('users', me.uid);
+      if (!u || !C.checkPw(b.pw, u)) return C.send(res, 401, {error:'지금 비밀번호가 맞지 않습니다.'});
+      if (!C.pwOk(b.newPw)) return C.send(res, 400, {error:'새 비밀번호는 영문·숫자를 섞어 10자 이상이어야 합니다.'});
+      if (String(b.newPw) === String(b.pw)) return C.send(res, 400, {error:'지금과 다른 비밀번호를 정하세요.'});
+      Object.assign(u, C.newHash(b.newPw), {mustChange:false, tv:(u.tv || 0) + 1, pwAt:Date.now()});await C.putDoc('users', me.uid, u);
+      await C.ledger({at:Date.now(), col:'users', id:me.uid, op:'change_pw', by:me.role + ':' + me.uid, doc:null});
+      return C.send(res, 200, await issue(res, me.uid, u)); // 비밀번호가 바뀌면 다른 기기의 세션은 끊기고 이 기기만 새 세션
     }
     return C.send(res, 400, {error:'op'});
   }catch(e){console.error('[api]', e);return C.send(res, 500, {error:'server'});}

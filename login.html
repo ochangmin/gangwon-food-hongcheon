@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#12283F"><title>강원 먹거리 이음 · 로그인</title>
+<style>
+:root{--navy:#12283F;--accent:#0B8893;--ink:#17263A;--ink2:#55626F;--line:#E3E9EC;--crit:#D3372E;--ok:#1E8E5A}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%}
+body{font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,sans-serif;background:linear-gradient(135deg,#12283F 0%,#183A4F 55%,#0E5F67 100%);color:var(--ink);display:grid;place-items:center;padding:20px;word-break:keep-all;min-height:100vh}
+.card{width:min(400px,100%);background:#fff;border-radius:18px;padding:28px 26px 20px;box-shadow:0 18px 48px rgba(0,0,0,.28)}
+.card img{height:36px;display:block;margin-bottom:12px}
+h1{margin:0 0 4px;font-size:22px;letter-spacing:-.3px}.sub{margin:0 0 18px;color:var(--ink2);font-size:13.5px;line-height:1.5}
+label{display:block;font-size:13px;font-weight:600;color:var(--ink2);margin-top:12px}
+input{display:block;width:100%;margin-top:6px;padding:12px 14px;font:500 16px/1.2 inherit;font-family:inherit;border:1.5px solid var(--line);border-radius:11px;outline:none}
+input:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(11,136,147,.14)}
+.hint{font-size:12px;color:#8D9197;margin-top:5px}
+button.go{width:100%;margin-top:18px;padding:13px;border:none;border-radius:11px;background:var(--accent);color:#fff;font:700 15.5px/1 inherit;font-family:inherit;cursor:pointer}button.go:disabled{opacity:.6;cursor:wait}
+.msg{min-height:20px;margin:10px 0 0;font-size:13px;color:var(--crit)}.msg.ok{color:var(--ok)}
+.ft{margin:14px 0 0;padding-top:12px;border-top:1px solid var(--line);font-size:12px;color:#8D9197;line-height:1.5}
+.ft a{color:var(--accent)}
+[hidden]{display:none!important}
+</style></head><body>
+<main class="card">
+  <img src="img/org-logo.png" alt="" onerror="this.remove()">
+  <h1>강원 먹거리 이음</h1>
+  <p class="sub" id="sub">학교급식 먹거리 통합 관제 · 센터에서 발급한 계정으로 로그인하세요.</p>
+
+  <form id="fLogin" hidden>
+    <label for="id">아이디</label><input id="id" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+    <label for="pw">비밀번호</label><input id="pw" name="password" type="password" autocomplete="current-password" required>
+    <button class="go">로그인</button>
+  </form>
+
+  <form id="fChange" hidden>
+    <p class="sub" style="margin:0">처음 로그인했거나 비밀번호가 초기화되었습니다. 새 비밀번호를 정하세요.</p>
+    <input type="text" name="username" id="chUser" autocomplete="username" hidden>
+    <label for="npw">새 비밀번호</label><input id="npw" type="password" autocomplete="new-password" required><div class="hint">영문·숫자를 섞어 10자 이상</div>
+    <label for="npw2">새 비밀번호 확인</label><input id="npw2" type="password" autocomplete="new-password" required>
+    <button class="go">비밀번호 바꾸고 들어가기</button>
+  </form>
+
+  <form id="fSetup" hidden>
+    <p class="sub" style="margin:0">아직 관리자 계정이 없습니다. 최초 1회 센터 관리자 계정을 만드세요. Vercel 환경변수 ADMIN_SETUP_CODE 에 넣은 최초 설정 코드가 필요합니다.</p>
+    <label for="sc">최초 설정 코드</label><input id="sc" type="password" autocomplete="off" required>
+    <label for="sid">관리자 아이디</label><input id="sid" autocomplete="username" autocapitalize="none" spellcheck="false" required><div class="hint">영문 소문자·숫자 3~32자</div>
+    <label for="sname">이름</label><input id="sname" value="센터 관리자">
+    <label for="spw">비밀번호</label><input id="spw" type="password" autocomplete="new-password" required><div class="hint">영문·숫자를 섞어 10자 이상</div>
+    <button class="go">관리자 계정 만들기</button>
+  </form>
+
+  <div id="fOff" hidden><p class="sub" style="margin:0">회원 저장소가 아직 연결되지 않아 로그인 없이 열려 있습니다.</p><a class="go" href="/" style="display:block;text-align:center;text-decoration:none;margin-top:14px;padding:13px;border-radius:11px;background:var(--accent);color:#fff;font-weight:700">들어가기</a></div>
+
+  <p class="msg" id="m" role="alert"></p>
+  <p class="ft">계정이 없거나 비밀번호를 잊었으면 센터 관리자에게 요청하세요. 공용 PC에서는 사용 후 로그아웃하세요.</p>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);const msg = (t, ok) => {$('m').textContent = t || '';$('m').className = 'msg' + (ok ? ' ok' : '');};
+  const call = async (body, tok) => {const r = await fetch('/api/auth', {method:'POST', credentials:'same-origin', headers:Object.assign({'Content-Type':'application/json'}, tok ? {Authorization:'Bearer ' + tok} : {}), body:JSON.stringify(body)});
+    let j = {};try{j = await r.json();}catch(e){}if (!r.ok) throw new Error(j.error || ('오류 ' + r.status));return j;};
+  const show = id => ['fLogin', 'fChange', 'fSetup', 'fOff'].forEach(x => $(x).hidden = x !== id);
+  let pending = null, curPw = '';
+  // 로그인 결과를 화면 앱이 쓰는 형식으로 저장하고 역할별 첫 화면으로 이동
+  function enter(j){
+    try{
+      localStorage.setItem('gfl:rt', JSON.stringify({token:j.token, role:j.role, id:j.id, name:j.name, sup:j.sup, driverId:j.driverId, sid:j.sid, veh:j.veh, exp:j.exp - 60e3}));
+      localStorage.removeItem('gfl:sess');sessionStorage.removeItem('gfl:out');
+      if (j.role === 'driver' && j.driverId) localStorage.setItem('gfl:sess', JSON.stringify({driverId:j.driverId, exp:j.exp, at:Date.now()}));
+      if (j.role === 'sup' && j.sup) sessionStorage.setItem('gfl:sup', JSON.stringify({id:j.id, sup:j.sup, exp:j.exp}));
+    }catch(e){}
+    const back = new URLSearchParams(location.search).get('next');
+    const h = location.hash || ({driver:'#driver', sup:'#sup', school:'#del'}[j.role] || '');
+    location.replace((back && back.startsWith('/') && !back.startsWith('//') ? back : '/') + h);
+  }
+  const busy = (f, on) => f.querySelectorAll('button').forEach(b => b.disabled = on);
+  $('fLogin').addEventListener('submit', async e => {e.preventDefault();busy(e.target, true);msg('');
+    try{const pw = $('pw').value;const j = await call({op:'login', id:$('id').value.trim(), pw});
+      if (j.mustChange){pending = j;curPw = pw;$('chUser').value = j.id;show('fChange');$('sub').textContent = j.name + ' 님, 환영합니다.';$('npw').focus();}
+      else enter(j);}
+    catch(x){msg(x.message);$('pw').value = '';$('pw').focus();}finally{busy(e.target, false);}});
+  $('fChange').addEventListener('submit', async e => {e.preventDefault();msg('');
+    if ($('npw').value !== $('npw2').value){msg('두 비밀번호가 다릅니다.');return;}
+    busy(e.target, true);try{const j = await call({op:'change_pw', pw:curPw, newPw:$('npw').value}, pending.token);curPw = '';enter(j);}
+    catch(x){msg(x.message);}finally{busy(e.target, false);}});
+  $('fSetup').addEventListener('submit', async e => {e.preventDefault();busy(e.target, true);msg('');
+    try{const j = await call({op:'setup', setupCode:$('sc').value, id:$('sid').value.trim(), name:$('sname').value.trim(), pw:$('spw').value});$('sc').value = '';enter(j);}
+    catch(x){msg(x.message);}finally{busy(e.target, false);}});
+  (async () => {
+    if (new URLSearchParams(location.search).has('out')){try{await call({op:'logout'});}catch(e){}try{localStorage.removeItem('gfl:rt');localStorage.removeItem('gfl:sess');sessionStorage.removeItem('gfl:sup');}catch(e){}msg('로그아웃했습니다.', true);}
+    let st = {};try{st = await call({op:'status'});}catch(e){}
+    if (!st.configured){show('fOff');return;}
+    if (st.setupNeeded){show('fSetup');$('sc').focus();return;}
+    show('fLogin');$('id').focus();
+  })();
+})();
+</script>
+</body></html>

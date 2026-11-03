@@ -72,7 +72,20 @@ async function verify(tok){
   if (mac.length !== want.length || !crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(want))) return null;
   try{const c = JSON.parse(Buffer.from(body.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString());if (!c.exp || Date.now() > c.exp) return null;return c;}catch(e){return null;}
 }
-async function who(req){const h = req.headers.authorization || '';return verify(h.startsWith('Bearer ') ? h.slice(7) : null);}
+// 로그인 확인: Authorization 헤더 또는 HttpOnly 세션 쿠키(gs). 회원 계정(uid)이면 지금도 사용 중인지·비밀번호가 바뀌지 않았는지(tv) 확인
+function cookieTok(req){const m = String(req.headers.cookie || '').match(/(?:^|;\s*)gs=([^;]+)/);return m ? decodeURIComponent(m[1]) : null;}
+async function who(req){
+  const h = req.headers.authorization || '';const c = await verify(h.startsWith('Bearer ') ? h.slice(7) : cookieTok(req));
+  if (!c) return null;
+  if (c.uid){const u = await getDoc('users', c.uid).catch(() => null);if (!u || u.active === false || (u.tv || 0) !== (c.tv || 0)) return null;}
+  return c;
+}
+const SESSION_MS = 12 * 3600e3;
+function sessionCookie(tok, maxAgeS){return `gs=${encodeURIComponent(tok)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeS}`;}
+const ID_OK = /^[a-z0-9][a-z0-9._-]{2,31}$/;
+const ROLES = ['admin', 'staff', 'viewer', 'sup', 'driver', 'school'];
+function pwOk(pw){pw = String(pw || '');return pw.length >= 10 && /[A-Za-z]/.test(pw) && /[0-9]/.test(pw);}
+function publicUser(id, u){return {id, name:u.name || '', role:u.role, sup:u.sup || null, driverId:u.driverId || null, sid:u.sid || null, active:u.active !== false, mustChange:!!u.mustChange, createdAt:u.createdAt || null, lastLogin:u.lastLogin || null, by:u.by || null};}
 
 // 로그인 시도 제한: 같은 IP·계정 10분에 10회
 // 같은 IP·계정 10분 10회, 같은 계정(모든 IP 합산) 10분 30회. IP는 Vercel이 넣는 값만 사용(위조 불가)
@@ -120,4 +133,4 @@ async function ledgerTail(n){
   return rows.map(r => {const p1 = r.indexOf('|'), p2 = r.indexOf('|', p1 + 1);const payload = r.slice(p2 + 1);const body = payload.slice(payload.indexOf('|') + 1);let e = {};try{e = JSON.parse(body);}catch(x){}return Object.assign({hash:r.slice(0, p1)}, e);}).reverse();
 }
 
-module.exports = {setupCodeOk, encReady, sha256, ledger, ledgerVerify, ledgerTail, configured, redis, pipeline, splitPath, getDoc, putDoc, delDoc, listCol, newHash, checkPw, sign, verify, who, rateOk, body, send, COL_RE};
+module.exports = {cookieTok, SESSION_MS, sessionCookie, ID_OK, ROLES, pwOk, publicUser, setupCodeOk, encReady, sha256, ledger, ledgerVerify, ledgerTail, configured, redis, pipeline, splitPath, getDoc, putDoc, delDoc, listCol, newHash, checkPw, sign, verify, who, rateOk, body, send, COL_RE};

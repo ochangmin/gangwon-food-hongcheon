@@ -1,10 +1,16 @@
 // 역할별 권한 — 서버가 직접 판단한다 (브라우저 화면 제한과 별개)
-//  admin  : 센터 관리자 — 모든 컬렉션 읽기·쓰기
+//  admin  : 센터 관리자 — 모든 컬렉션 읽기·쓰기 + 회원 관리(/api/users)
+//  staff  : 센터 직원 — 업무 자료 읽기·쓰기 (계정·비밀번호 자료 제외)
+//  viewer : 열람 전용 — 업무 자료 읽기만
+//  school : 학교 — 발주·배송·일일 기록 읽기만
 //  sup    : 공급업체 — 자기 업체 출고 문서(sup_ship)만 읽기·쓰기, 출고확정 이후·입고 항목은 변경 불가
 //  driver : 배송 기사 — 자기 운행(runs), 자기 차량 단말 명령(iot_cmd) 응답·센서값(iot_tel)만 쓰기
 // 비밀번호 해시(auth, sup_auth, sys)는 누구에게도 내려주지 않는다.
 
 const SHARED_READ = ['orders', 'std_center', 'std_custom', 'courses'];
+// 회원·비밀번호 자료는 일반 자료 API로 절대 읽고 쓰지 않는다
+const RESERVED = ['users', 'sys', 'auth', 'sup_auth'];
+const SCHOOL_READ = ['del_day', 'daily', 'unload_hot'];
 const HIDDEN_FIELDS = {auth:['salt', 'hash', 'iter'], sup_auth:['salt', 'hash', 'iter']};
 const SUP_STATUS = ['발주접수', '출고준비', '출고확정'];
 
@@ -17,7 +23,9 @@ function strip(col, data){
 
 function canRead(u, col, id, data){
   if (!u) return false;
-  if (u.role === 'admin') return true;
+  if (RESERVED.includes(col) && col !== 'auth') return false;
+  if (u.role === 'admin' || u.role === 'staff' || u.role === 'viewer') return col !== 'auth' || u.role === 'admin';
+  if (u.role === 'school') return SHARED_READ.includes(col) || SCHOOL_READ.includes(col);
   if (SHARED_READ.includes(col)) return true;
   if (u.role === 'sup'){
     if (col === 'sup_ship') return !!data && data.kind !== 'out' && data.sup === u.sup;
@@ -36,8 +44,10 @@ function canRead(u, col, id, data){
 // 반환: {ok:true, data(저장할 최종 문서)} 또는 {ok:false, why}
 function canWrite(u, col, id, next, prev, op){
   if (!u) return {ok:false, why:'login'};
-  if (col === 'sys') return {ok:false, why:'reserved'};
+  if (RESERVED.includes(col) && col !== 'auth') return {ok:false, why:'reserved'};
   if (u.role === 'admin') return {ok:true, data:next};
+  if (u.role === 'staff') return col === 'auth' ? {ok:false, why:'reserved'} : {ok:true, data:next};
+  if (u.role === 'viewer' || u.role === 'school') return {ok:false, why:'read_only'};
   if (u.role === 'sup'){
     if (col !== 'sup_ship' || op === 'delete') return {ok:false, why:'sup_scope'};
     if (!next || next.kind === 'out' || next.sup !== u.sup) return {ok:false, why:'other_supplier'};
