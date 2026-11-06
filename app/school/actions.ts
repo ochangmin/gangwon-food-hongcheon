@@ -33,7 +33,7 @@ async function saveWeek(fd: FormData, submit: boolean) {
     if (error) errors.push(`${d}: ${error.message}`);
     else { saved += data.saved; locked += data.locked; }
   }
-  revalidatePath('/school');
+  revalidatePath('/', 'layout');
   if (errors.length) redirect(withMsg(back, 'err', errors.join(' / ')));
   redirect(withMsg(back, 'msg', (submit ? '주문을 제출했습니다' : '임시저장했습니다') + ` · ${saved}건` + (locked ? ` · 확정된 ${locked}건은 변경되지 않음` : '')));
 }
@@ -47,4 +47,8 @@ export async function newClaim(fd: FormData) {
     p_school_id: str(fd, 'school'), p_item_id: str(fd, 'item'), p_date: str(fd, 'date') || today(),
     p_type: str(fd, 'type'), p_qty: Number(str(fd, 'qty') || 0), p_description: str(fd, 'desc'), p_action: str(fd, 'action') || null,
   }, backOf(fd), (d) => `클레임 ${d.claim_no} 접수` + (d.lot_id ? ' · 로트 연결' : ''));
+}
+
+export async function requestChange(fd: FormData) {
+  return rpc('request_order_change', { p_line_id: str(fd, 'line'), p_qty: Number(str(fd, 'qty') || 0), p_reason: str(fd, 'reason') }, backOf(fd), '변경 요청을 보냈습니다. 센터가 승인하면 반영됩니다');
 }

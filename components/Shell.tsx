@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import type { Profile } from '@/lib/session';
-import { Nav, type NavGroup } from './Nav';
+import { Nav } from './Nav';
+import { menuFor } from '@/lib/menu';
 import { signOut } from '@/app/login/actions';
 
 const ROLE: Record<string, string> = {
@@ -10,7 +11,7 @@ const ROLE: Record<string, string> = {
   supplier: '공급업체',
 };
 
-export function Shell({ p, groups, children }: { p: Profile; groups: NavGroup[]; children: React.ReactNode }) {
+export function Shell({ p, children }: { p: Profile; children: React.ReactNode }) {
   const org = p.schools?.name ?? p.suppliers?.name ?? p.centers?.name ?? '강원특별자치도';
   return (
     <div className="app">
@@ -35,7 +36,7 @@ export function Shell({ p, groups, children }: { p: Profile; groups: NavGroup[];
         </div>
       </header>
       <Suspense>
-        <Nav groups={groups} />
+        <Nav tops={menuFor(p.role)} />
       </Suspense>
       <main>{children}</main>
     </div>

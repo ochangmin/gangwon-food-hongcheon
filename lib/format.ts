@@ -36,3 +36,14 @@ export function dlabel(d: string): string {
   return `${d.slice(5, 7)}.${d.slice(8, 10)} (${DOW[x.getUTCDay()]})`;
 }
 export const isDate = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+/** 해당 월의 평일(월~금) */
+export function monthWeekdays(d: string): string[] {
+  const first = `${d.slice(0, 7)}-01`;
+  const out: string[] = [];
+  for (let x = first; x.slice(0, 7) === first.slice(0, 7); x = addDays(x, 1)) {
+    const dow = new Date(x + 'T00:00:00Z').getUTCDay();
+    if (dow !== 0 && dow !== 6) out.push(x);
+  }
+  return out;
+}

@@ -15,10 +15,11 @@ export default async function Masters({ searchParams }: { searchParams: SP }) {
   const cq = sp.center ? `&center=${sp.center}` : '';
   const back = `/center/masters?tab=${tab}${cq}`;
   const [{ data: schools }, { data: suppliers }, { data: courses }] = await Promise.all([
-    sb.from('schools').select('id,code,name,school_level,meals,neis_code,course_id,delivery_seq,external_ref').eq('center_id', center.id).order('code'),
+    sb.from('schools').select('id,code,name,school_level,meals,neis_code,course_id,delivery_seq,region_id,external_ref').eq('center_id', center.id).order('code'),
     sb.from('suppliers').select('id,code,name,kind,biz_no,area,phone,external_ref').eq('center_id', center.id).order('code'),
     sb.from('courses').select('id,code,name,vehicle_no,driver_name,depart_time').eq('center_id', center.id).order('code'),
   ]);
+  const { data: regions } = await sb.from('regions').select('id,name').eq('center_id', center.id).order('code');
   const Hidden = () => (<><Back value={back} /><input type="hidden" name="center" value={center.id} /></>);
 
   let body: React.ReactNode = null;
@@ -26,13 +27,14 @@ export default async function Masters({ searchParams }: { searchParams: SP }) {
     body = (
       <>
         <section className="panel"><div className="tw"><table>
-          <thead><tr><th>납품처코드</th><th>학교명</th><th>구분</th><th className="n">급식 인원</th><th>NEIS</th><th>배송코스 · 순서</th><th>연계</th></tr></thead>
+          <thead><tr><th>납품처코드</th><th>학교명</th><th>구분</th><th className="n">급식 인원</th><th>NEIS</th><th>권역 · 배송코스 · 순서</th><th>연계</th></tr></thead>
           <tbody>{(schools ?? []).map((s) => (
             <tr key={s.id}>
               <td className="mono">{s.code}</td><td>{s.name}</td><td>{s.school_level}</td><td className="n">{s.meals}</td><td className="mono">{s.neis_code}</td>
               <td>
                 <form action={assignCourse} className="bar" style={{ margin: 0, flexWrap: 'nowrap' }}>
                   <Back value={back} /><input type="hidden" name="school" value={s.id} />
+                  <select name="region" defaultValue={s.region_id ?? ''} aria-label="권역"><option value="">권역 없음</option>{(regions ?? []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
                   <select name="course" defaultValue={s.course_id ?? ''} aria-label="배송코스"><option value="">미배정</option>{(courses ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
                   <input className="q" type="number" name="seq" min="1" defaultValue={s.delivery_seq ?? ''} aria-label="배송순서" style={{ width: 60 }} />
                   <button className="btn">저장</button>

@@ -18,7 +18,7 @@ export default async function Province({ searchParams }: { searchParams: SP }) {
   const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
 
   return (
-    <Shell p={p} groups={[{ g: '도', items: [{ href: '/province', label: '도 통합 현황' }] }]}>
+    <Shell p={p}>
       <PageHead crumb="강원특별자치도" title="도 통합 현황" desc="시군 학교급식지원센터별 납품일 진행률과 미결 클레임입니다. 센터 이름을 누르면 그 센터 화면으로 들어갑니다." />
       <DateBar path="/province" date={c.date} />
       <div className="kpis">

@@ -130,7 +130,7 @@ export async function saveCourse(fd: FormData) {
 export async function assignCourse(fd: FormData) {
   const sb = await supabase();
   const back = backOf(fd);
-  const { error } = await sb.from('schools').update({ course_id: str(fd, 'course') || null, delivery_seq: Number(str(fd, 'seq') || 0) || null }).eq('id', str(fd, 'school'));
+  const { error } = await sb.from('schools').update({ course_id: str(fd, 'course') || null, delivery_seq: Number(str(fd, 'seq') || 0) || null, region_id: str(fd, 'region') || null }).eq('id', str(fd, 'school'));
   if (error) redirect(withMsg(back, 'err', error.message));
   revalidatePath('/center', 'layout');
   redirect(withMsg(back, 'msg', '코스 배정을 저장했습니다'));

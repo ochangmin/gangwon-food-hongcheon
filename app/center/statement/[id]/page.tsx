@@ -19,6 +19,7 @@ export default async function Statement({ params, searchParams }: { params: Prom
   const { data } = await sb.from('v_order_lines')
     .select('id,item_name,spec,unit,qty,sale_price,amount,vat,tax,origin,origin_detail,cert_type,lot_no,status').eq('shipment_id', id).order('item_name');
   const lines = (data ?? []) as L[];
+  const { data: seal } = await sb.from('seals').select('image_data').eq('center_id', center.id).eq('is_default', true).limit(1).maybeSingle();
   const school = sh.schools as unknown as { name: string; code: string; address: string | null };
   const back = `/center/statement/${id}${sp.center ? `?center=${sp.center}` : ''}`;
   const amt = sumBy(lines, (l) => Number(l.amount)), vat = sumBy(lines, (l) => Number(l.vat));
@@ -36,7 +37,8 @@ export default async function Statement({ params, searchParams }: { params: Prom
         <h2 className="t">거래명세서</h2>
         <p className="dim" style={{ textAlign: 'center', margin: 0 }}>{sh.statement_no} · 공급받는자 보관용</p>
         <div className="parties">
-          <div><b>공급자</b>{center.name}<br /><span className="dim">강원특별자치도 {center.sigungu}</span></div>
+          <div><b>공급자</b>{center.name}<br /><span className="dim">강원특별자치도 {center.sigungu}</span>
+            {seal?.image_data ? <img src={seal.image_data} alt="센터 인장" style={{ height: 48, float: 'right', marginTop: -24 }} /> : null}</div>
           <div><b>공급받는자</b>{school.name} <span className="mono dim">{school.code}</span><br /><span className="dim">납품일 {dlabel(sh.delivery_date)}{sh.received_by ? ` · 검수 ${sh.received_by}` : ''}</span></div>
         </div>
         <div className="tw"><table>
