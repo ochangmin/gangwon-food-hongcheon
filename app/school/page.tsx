@@ -3,7 +3,7 @@ import { requireProfile } from '@/lib/session';
 import { type SP, sumBy } from '@/lib/page';
 import { won, qty, weekDays, dlabel, addDays, today, isDate, STATUS } from '@/lib/format';
 import { Flash, PageHead, Back, Empty } from '@/components/ui';
-import { saveWeek } from './actions';
+import { draftWeek, submitWeek } from './actions';
 
 type Item = { id: string; code: string; name: string; spec: string | null; unit: string; category: string | null; cert_type: string | null;
   suppliers: { name: string } | null; item_prices: { sale_price: number; valid_from: string; valid_to: string }[] };
@@ -58,8 +58,8 @@ export default async function SchoolOrders({ searchParams }: { searchParams: SP 
         <header>
           <h2>{p.schools?.name} 주문서</h2>
           <div className="bar" style={{ margin: 0 }}>
-            <button className="btn" name="submit" value="0" formAction={saveWeek}>임시저장</button>
-            <button className="btn pri" name="submit" value="1" formAction={saveWeek}>제출</button>
+            <button className="btn" formAction={draftWeek}>임시저장</button>
+            <button className="btn pri" formAction={submitWeek}>제출</button>
           </div>
         </header>
         {!shown.length ? <Empty>이번 주 주문이 없습니다. 위에서 품목을 추가하세요.</Empty> : (

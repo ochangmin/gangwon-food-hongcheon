@@ -1,10 +1,13 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-if not exist "%~dp0package.json" (
-  echo [!] Extract the zip first, then run this file from the extracted folder.
-  pause
-  exit /b 1
-)
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\local\reset-local.ps1" %*
-if errorlevel 1 pause
+echo This deletes all local data (orders, receipts, accounts) and restores the demo data.
+set /p ANSWER=Type RESET to continue: 
+if /i not "%ANSWER%"=="RESET" goto cancel
+if exist ".localdb" rmdir /s /q ".localdb"
+echo Done. Run start-local.bat again.
+pause
+exit /b 0
+:cancel
+echo Canceled.
+pause

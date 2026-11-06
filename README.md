@@ -42,22 +42,21 @@ app/province/          도 통합 현황
 app/api/umji/ingest/   umji 수집 API
 ```
 
-## 내 PC에서 실행 (Windows)
+## 내 PC에서 실행 (Windows · Docker 불필요)
 
-인터넷의 Supabase 없이 PC 안에서 DB·로그인·웹이 모두 돌아갑니다.
+Node.js만 있으면 됩니다. DB(내장 Postgres, PGlite)와 로그인 서버가 `scripts/local/local-supabase.mjs` 안에서 함께 실행되고, 권한 규칙(RLS)은 Supabase와 똑같이 적용됩니다.
 
-1. 필요한 프로그램: **Node.js 20 이상**(nodejs.org LTS), **Docker Desktop**(실행해 둔 상태)
+1. Node.js 20 이상 설치 (nodejs.org LTS)
 2. 압축을 푼 폴더에서 `start-local.bat` 더블클릭
-   - 처음에는 DB 이미지 내려받기와 빌드로 10분 안팎 걸립니다. 다음부터는 1분 이내입니다.
+   - 처음에는 패키지 설치와 빌드로 3~5분 걸립니다. 다음부터는 몇 초면 뜹니다.
    - 끝나면 브라우저가 http://localhost:3000 으로 열립니다.
 3. 데모 계정 (비밀번호 공통 `eum-local-2026`)
    - 도 관리자 `province@demo.eum` · 홍천센터 `hongcheon@demo.eum` · 춘천센터 `chuncheon@demo.eum`
    - 홍천초 영양교사 `s101@demo.eum` · 공급업체 `p01@demo.eum`
-4. 끄기: 실행 창에서 Ctrl+C → `stop-local.bat` (데이터는 남습니다)
+4. 끄기: 실행 창을 닫거나 Ctrl+C. 데이터는 `.localdb` 폴더에 남습니다.
 5. 처음 상태로 되돌리기: `reset-local.bat`
-6. 코드를 고친 뒤 다시 빌드하려면 `start-local.bat -Rebuild`
 
-DB 내용은 http://127.0.0.1:54323 (Supabase Studio)에서 표로 보고 고칠 수 있습니다.
+Docker Desktop이 있다면 `npx supabase start`로 정식 로컬 Supabase(`supabase/config.toml`)를 쓸 수도 있습니다.
 
 ### 직접 써보는 순서
 1. `s101@demo.eum` 으로 로그인 → 주간 주문에서 다음 주 품목 추가 → 수량 입력 → 제출

@@ -37,13 +37,16 @@ export default async function Delivery({ searchParams }: { searchParams: SP }) {
             <section className="panel" key={co.id}>
               <header>
                 <h2>{co.name}</h2>
-                <form action={courseRun} className="bar" style={{ margin: 0 }}>
-                  <Back value={c.back} /><input type="hidden" name="course" value={co.id} /><input type="hidden" name="date" value={c.date} />
+                <div className="bar" style={{ margin: 0 }}>
                   <span className={`pill s-${st}`}>{RUN[st]} {t(run?.arrived_at ?? run?.departed_at)}</span>
-                  {st === 'waiting' ? <button className="btn" name="action" value="depart">출발</button> : null}
-                  {st === 'departed' ? <button className="btn pri" name="action" value="arrive">도착 완료</button> : null}
-                  {st !== 'waiting' ? <button className="btn" name="action" value="reset">초기화</button> : null}
-                </form>
+                  {(st === 'waiting' ? [['depart', '출발', 'btn']] : st === 'departed' ? [['arrive', '도착 완료', 'btn pri'], ['reset', '초기화', 'btn']] : [['reset', '초기화', 'btn']]).map(([a, label, cls]) => (
+                    <form key={a} action={courseRun}>
+                      <Back value={c.back} /><input type="hidden" name="course" value={co.id} /><input type="hidden" name="date" value={c.date} />
+                      <input type="hidden" name="action" value={a} />
+                      <button className={cls}>{label}</button>
+                    </form>
+                  ))}
+                </div>
               </header>
               <div className="pad dim" style={{ paddingBottom: 0, fontSize: 13 }}>
                 차량 <b className="mono">{co.vehicle_no ?? '—'}</b> · 기사 {co.driver_name ?? '—'} {co.driver_phone ?? ''} · 출발 {co.depart_time?.slice(0, 5) ?? '—'}

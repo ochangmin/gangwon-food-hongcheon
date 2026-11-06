@@ -6,10 +6,15 @@ import { backOf, str, rpc, withMsg } from '@/lib/act';
 import { today } from '@/lib/format';
 
 /** 주간 주문 저장/제출: 입력칸 이름 q_<납품일>_<상품ID> */
-export async function saveWeek(fd: FormData) {
+export async function draftWeek(fd: FormData) {
+  return saveWeek(fd, false);
+}
+export async function submitWeek(fd: FormData) {
+  return saveWeek(fd, true);
+}
+async function saveWeek(fd: FormData, submit: boolean) {
   const back = backOf(fd);
   const school = str(fd, 'school');
-  const submit = str(fd, 'submit') === '1';
   const days = fd.getAll('day').map(String);
   const sb = await supabase();
   const t = today();
