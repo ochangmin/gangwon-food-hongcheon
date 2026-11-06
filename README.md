@@ -49,7 +49,7 @@ Node.js만 있으면 됩니다. DB(내장 Postgres, PGlite)와 로그인 서버�
 1. Node.js 20 이상 설치 (nodejs.org LTS)
 2. 압축을 푼 폴더에서 `start-local.bat` 더블클릭
    - 처음에는 패키지 설치와 빌드로 3~5분 걸립니다. 다음부터는 몇 초면 뜹니다.
-   - 끝나면 브라우저가 http://localhost:3000 으로 열립니다.
+   - 끝나면 브라우저가 http://localhost:3210 으로 열립니다 (사용 중이면 3211, 3212… 비어 있는 번호를 씁니다. 실행 창에 실제 주소가 나옵니다).
 3. 데모 계정 (비밀번호 공통 `eum-local-2026`)
    - 도 관리자 `province@demo.eum` · 홍천센터 `hongcheon@demo.eum` · 춘천센터 `chuncheon@demo.eum`
    - 홍천초 영양교사 `s101@demo.eum` · 공급업체 `p01@demo.eum`

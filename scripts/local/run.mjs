@@ -1,6 +1,7 @@
 // 로컬 실행: 미니 Supabase → .env.local → (필요하면) 빌드 → 웹 서버 → 브라우저
 // 사용: node scripts/local/run.mjs [--rebuild] [--no-open]
 import { spawn, spawnSync } from 'node:child_process';
+import net from 'node:net';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,7 +10,21 @@ import { startLocalSupabase } from './local-supabase.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 process.chdir(root);
-const WEB_PORT = Number(process.env.PORT || 3000);
+// 다른 프로젝트(예: 3000번)와 겹치지 않도록 비어 있는 포트를 찾아 씀
+function isFree(port) {
+  return new Promise((ok) => {
+    const s = net.createServer();
+    s.once('error', () => ok(false));
+    s.once('listening', () => s.close(() => ok(true)));
+    s.listen(port, '0.0.0.0');
+  });
+}
+async function freePort(from) {
+  for (let p = from; p < from + 50; p++) if (await isFree(p)) return p;
+  throw new Error(`${from}~${from + 49} 포트가 모두 사용 중입니다`);
+}
+const WEB_PORT = await freePort(Number(process.env.PORT || 3210));
+const SB_PORT = await freePort(54331);
 const DEMO_PW = 'eum-local-2026';
 const isWin = process.platform === 'win32';
 const say = (...m) => console.log(...m);
@@ -17,10 +32,9 @@ const say = (...m) => console.log(...m);
 say('\n▶ 로컬 DB·로그인 서버 시작');
 let sb;
 try {
-  sb = await startLocalSupabase({ root, demoPassword: DEMO_PW, log: say });
+  sb = await startLocalSupabase({ root, port: SB_PORT, demoPassword: DEMO_PW, log: say });
 } catch (e) {
-  if (e.code === 'EADDRINUSE') say('  [실패] 54321 포트를 다른 프로그램이 쓰고 있습니다. 이미 실행 중인 창이 있으면 닫고 다시 실행하세요.');
-  else say('  [실패] ' + (e.stack || e.message));
+  say('  [실패] ' + (e.stack || e.message));
   process.exit(1);
 }
 say(`  ${sb.url}`);
@@ -95,7 +109,7 @@ const stop = async () => {
 process.on('SIGINT', stop);
 process.on('SIGTERM', stop);
 web.on('exit', async (code) => {
-  if (code) say(`  웹 서버가 종료되었습니다 (코드 ${code}). 3000 포트를 다른 프로그램이 쓰고 있지 않은지 확인하세요.`);
+  if (code) say(`  웹 서버가 종료되었습니다 (코드 ${code}). 실행 창의 오류 내용을 확인하세요.`);
   await sb.close();
   process.exit(code ?? 0);
 });
