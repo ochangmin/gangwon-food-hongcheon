@@ -1,0 +1,37 @@
+# 로컬 Supabase 설정 (supabase CLI start 용)
+project_id = "gangwon-meal"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 5000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[studio]
+enabled = true
+port = 54323
+
+[analytics]
+enabled = false
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://127.0.0.1:3000"]
+jwt_expiry = 3600
+# 계정은 센터 관리자가 발급하므로 공개 가입은 막음
+enable_signup = false
+
+[auth.email]
+enable_signup = false
+enable_confirmations = false

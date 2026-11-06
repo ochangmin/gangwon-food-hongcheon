@@ -42,7 +42,31 @@ app/province/          도 통합 현황
 app/api/umji/ingest/   umji 수집 API
 ```
 
-## 설치
+## 내 PC에서 실행 (Windows)
+
+인터넷의 Supabase 없이 PC 안에서 DB·로그인·웹이 모두 돌아갑니다.
+
+1. 필요한 프로그램: **Node.js 20 이상**(nodejs.org LTS), **Docker Desktop**(실행해 둔 상태)
+2. 압축을 푼 폴더에서 `start-local.bat` 더블클릭
+   - 처음에는 DB 이미지 내려받기와 빌드로 10분 안팎 걸립니다. 다음부터는 1분 이내입니다.
+   - 끝나면 브라우저가 http://localhost:3000 으로 열립니다.
+3. 데모 계정 (비밀번호 공통 `eum-local-2026`)
+   - 도 관리자 `province@demo.eum` · 홍천센터 `hongcheon@demo.eum` · 춘천센터 `chuncheon@demo.eum`
+   - 홍천초 영양교사 `s101@demo.eum` · 공급업체 `p01@demo.eum`
+4. 끄기: 실행 창에서 Ctrl+C → `stop-local.bat` (데이터는 남습니다)
+5. 처음 상태로 되돌리기: `reset-local.bat`
+6. 코드를 고친 뒤 다시 빌드하려면 `start-local.bat -Rebuild`
+
+DB 내용은 http://127.0.0.1:54323 (Supabase Studio)에서 표로 보고 고칠 수 있습니다.
+
+### 직접 써보는 순서
+1. `s101@demo.eum` 으로 로그인 → 주간 주문에서 다음 주 품목 추가 → 수량 입력 → 제출
+2. `hongcheon@demo.eum` → 주문확정 (납품일 선택) → 전체 학교 확정
+3. `p01@demo.eum` → 발주 확인 → 수량 회신
+4. `hongcheon@demo.eum` → 발주·입고 → 입고확정 → 출고·거래명세 → 출고확정 → 배송 운행 → 출발·도착
+5. `s101@demo.eum` → 납품·검수 → 검수 확인, 클레임 접수
+
+## 클라우드 설치
 
 1. Supabase 프로젝트를 만들고 `supabase/migrations`의 SQL을 순서대로 실행합니다 (Supabase CLI: `supabase db push`).
 2. 데모가 필요하면 `supabase/seed.sql`을 실행하고 데모 계정을 만듭니다.
