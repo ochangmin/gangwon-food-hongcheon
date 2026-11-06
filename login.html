@@ -13,6 +13,7 @@ select{display:block;width:100%;margin-top:6px;padding:11px 12px;font:500 15px/1
 .alt{margin:12px 0 0;text-align:center;font-size:13px}.alt a{color:var(--accent);text-decoration:none;font-weight:600}
 .agree{display:flex;gap:8px;align-items:flex-start;font-weight:500;font-size:12px;line-height:1.5;margin-top:14px}.agree input{width:auto;margin:2px 0 0}
 input:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(11,136,147,.14)}
+.rules{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px}.rules li{font-size:12px;padding:3px 9px;border-radius:999px;background:#F1F3F5;color:#8D9197}.rules li.ok{background:#E7F5EE;color:var(--ok);font-weight:600}.rules li.ok::before{content:"✓ "}
 .hint{font-size:12px;color:#8D9197;margin-top:5px}
 button.go{width:100%;margin-top:18px;padding:13px;border:none;border-radius:11px;background:var(--accent);color:#fff;font:700 15.5px/1 inherit;font-family:inherit;cursor:pointer}button.go:disabled{opacity:.6;cursor:wait}
 .msg{min-height:20px;margin:10px 0 0;font-size:13px;color:var(--crit)}.msg.ok{color:var(--ok)}
@@ -48,7 +49,8 @@ button.go{width:100%;margin-top:18px;padding:13px;border:none;border-radius:11px
   <form id="fChange" hidden>
     <p class="sub" style="margin:0" id="chWhy">처음 로그인했거나 비밀번호가 초기화되었습니다. 새 비밀번호를 정하세요.</p>
     <input type="text" name="username" id="chUser" autocomplete="username" hidden>
-    <label for="npw">새 비밀번호</label><input id="npw" type="password" autocomplete="new-password" required><div class="hint">영문·숫자·특수문자를 모두 섞어 10자 이상</div>
+    <label for="npw">새 비밀번호</label><input id="npw" type="password" autocomplete="new-password" required>
+    <ul class="rules" id="pwRules"><li data-r="len">10자 이상</li><li data-r="al">영문</li><li data-r="num">숫자</li><li data-r="sp">특수문자 (! @ # $ % * ? 등)</li><li data-r="diff">지금 비밀번호와 다름</li><li data-r="eq">확인 칸과 같음</li></ul>
     <label for="npw2">새 비밀번호 확인</label><input id="npw2" type="password" autocomplete="new-password" required>
     <button class="go">비밀번호 바꾸고 들어가기</button>
   </form>
@@ -93,8 +95,12 @@ button.go{width:100%;margin-top:18px;padding:13px;border:none;border-radius:11px
       if (j.mustChange){pending = j;curPw = pw;$('chUser').value = j.id;show('fChange');$('sub').textContent = j.name + ' 님, 환영합니다.';if (j.pwExpired) $('chWhy').textContent = '비밀번호를 사용한 지 90일이 지났습니다. 보안을 위해 새 비밀번호로 바꾸세요.';$('npw').focus();}
       else enter(j);}
     catch(x){msg(x.message);$('pw').value = '';$('pw').focus();}finally{busy(e.target, false);}});
+  const RULES = {len:v => v.length >= 10, al:v => /[A-Za-z]/.test(v), num:v => /[0-9]/.test(v), sp:v => /[^A-Za-z0-9]/.test(v), diff:v => !!v && v !== curPw, eq:v => !!v && v === $('npw2').value};
+  const RULE_TXT = {len:'10자 이상', al:'영문', num:'숫자', sp:'특수문자(! @ # $ % * ? 등)', diff:'지금 비밀번호와 다르게', eq:'확인 칸과 같게'};
+  const ruleCheck = () => {const v = $('npw').value;const miss = [];document.querySelectorAll('#pwRules li').forEach(li => {const ok = RULES[li.dataset.r](v);li.classList.toggle('ok', ok);if (!ok) miss.push(RULE_TXT[li.dataset.r]);});return miss;};
+  ['npw', 'npw2'].forEach(id => $(id).addEventListener('input', () => {ruleCheck();msg('');}));
   $('fChange').addEventListener('submit', async e => {e.preventDefault();msg('');
-    if ($('npw').value !== $('npw2').value){msg('두 비밀번호가 다릅니다.');return;}
+    const miss = ruleCheck();if (miss.length){msg('새 비밀번호에 빠진 조건: ' + miss.join(', '));$('npw').focus();return;}
     busy(e.target, true);try{const j = await call({op:'change_pw', pw:curPw, newPw:$('npw').value}, pending.token);curPw = '';enter(j);}
     catch(x){msg(x.message);}finally{busy(e.target, false);}});
   $('fSetup').addEventListener('submit', async e => {e.preventDefault();busy(e.target, true);msg('');
