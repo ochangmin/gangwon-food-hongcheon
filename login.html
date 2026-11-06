@@ -30,7 +30,17 @@ button.go{width:100%;margin-top:18px;padding:13px;border:none;border-radius:11px
     <label for="id">아이디</label><input id="id" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
     <label for="pw">비밀번호</label><input id="pw" name="password" type="password" autocomplete="current-password" required>
     <button class="go">로그인</button>
-    <p class="alt"><a href="#" id="toReq">계정이 없나요? 계정 등록 신청</a></p>
+    <p class="alt"><a href="#" id="toReq">계정이 없나요? 계정 등록 신청</a><br><a href="#" id="toRec" style="font-weight:500;color:#8D9197">관리자 계정이 잠겼나요?</a></p>
+  </form>
+
+  <form id="fRec" hidden>
+    <p class="sub" style="margin:0">센터 관리자 계정이 잠겼거나 비밀번호를 잊었을 때, 처음 관리자를 만들 때 받은 <b>최초 설정 코드</b>로 잠금을 풀고 새 비밀번호를 정합니다. 다른 관리자가 있으면 그 관리자에게 「잠금 해제」를 요청하세요.</p>
+    <label for="rcCode">최초 설정 코드</label><input id="rcCode" type="password" autocomplete="off" required>
+    <label for="rcId">관리자 아이디</label><input id="rcId" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+    <label for="rcPw">새 비밀번호</label><input id="rcPw" type="password" autocomplete="new-password" required><div class="hint">영문·숫자·특수문자(! @ # $ % * ? 등)를 모두 섞어 10자 이상</div>
+    <label for="rcPw2">새 비밀번호 확인</label><input id="rcPw2" type="password" autocomplete="new-password" required>
+    <button class="go">잠금 풀고 들어가기</button>
+    <p class="alt"><a href="#" class="toLogin2">로그인으로 돌아가기</a></p>
   </form>
 
   <form id="fReq" hidden>
@@ -74,7 +84,7 @@ button.go{width:100%;margin-top:18px;padding:13px;border:none;border-radius:11px
   const $ = id => document.getElementById(id);const msg = (t, ok) => {$('m').textContent = t || '';$('m').className = 'msg' + (ok ? ' ok' : '');};
   const call = async (body, tok) => {const r = await fetch('/api/auth', {method:'POST', credentials:'same-origin', headers:Object.assign({'Content-Type':'application/json'}, tok ? {Authorization:'Bearer ' + tok} : {}), body:JSON.stringify(body)});
     let j = {};try{j = await r.json();}catch(e){}if (!r.ok) throw new Error(j.error || ('오류 ' + r.status));return j;};
-  const show = id => ['fLogin', 'fChange', 'fSetup', 'fOff', 'fReq'].forEach(x => $(x).hidden = x !== id);
+  const show = id => ['fLogin', 'fChange', 'fSetup', 'fOff', 'fReq', 'fRec'].forEach(x => $(x).hidden = x !== id);
   let pending = null, curPw = '';
   // 로그인 결과를 화면 앱이 쓰는 형식으로 저장하고 역할별 첫 화면으로 이동
   function enter(j){
@@ -108,6 +118,14 @@ button.go{width:100%;margin-top:18px;padding:13px;border:none;border-radius:11px
     catch(x){msg(x.message);}finally{busy(e.target, false);}});
   $('toReq').addEventListener('click', e => {e.preventDefault();msg('');show('fReq');$('sub').textContent = '계정 등록 신청';$('rqName').focus();});
   $('toLogin').addEventListener('click', e => {e.preventDefault();msg('');show('fLogin');$('sub').textContent = '학교급식 먹거리 통합 관제 · 센터에서 발급한 계정으로 로그인하세요.';$('id').focus();});
+  $('toRec').addEventListener('click', e => {e.preventDefault();msg('');show('fRec');$('sub').textContent = '관리자 계정 복구';$('rcId').value = $('id').value.trim();$('rcCode').focus();});
+  document.querySelector('.toLogin2').addEventListener('click', e => {e.preventDefault();msg('');show('fLogin');$('id').focus();});
+  $('fRec').addEventListener('submit', async e => {e.preventDefault();msg('');
+    const v = $('rcPw').value;if (v !== $('rcPw2').value){msg('두 비밀번호가 다릅니다.');return;}
+    if (v.length < 10 || !/[A-Za-z]/.test(v) || !/[0-9]/.test(v) || !/[^A-Za-z0-9]/.test(v)){msg('새 비밀번호는 영문·숫자·특수문자를 모두 섞어 10자 이상이어야 합니다.');return;}
+    busy(e.target, true);
+    try{const j = await call({op:'recover', setupCode:$('rcCode').value, id:$('rcId').value.trim(), newPw:v});$('rcCode').value = '';enter(j);}
+    catch(x){msg(x.message);}finally{busy(e.target, false);}});
   $('fReq').addEventListener('submit', async e => {e.preventDefault();busy(e.target, true);msg('');
     try{await call({op:'request', name:$('rqName').value.trim(), org:$('rqOrg').value.trim(), phone:$('rqPhone').value.trim(), role:$('rqRole').value, wantId:$('rqId').value.trim(), reason:$('rqWhy').value.trim()});
       e.target.reset();show('fLogin');msg('등록 신청을 접수했습니다. 센터 관리자가 확인한 뒤 연락드립니다.', true);}

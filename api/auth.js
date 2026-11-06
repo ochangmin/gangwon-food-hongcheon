@@ -5,6 +5,7 @@
 //  {op:'me'}                                  → 지금 로그인한 계정
 //  {op:'change_pw', pw, newPw}                → 내 비밀번호 바꾸기
 //  {op:'logout'}                              → 로그아웃 (쿠키 삭제)
+//  {op:'recover', setupCode, id, newPw}      → 관리자 계정 복구: 최초 설정 코드로 잠금 해제 + 새 비밀번호 (다른 관리자가 없을 때)
 //  {op:'request', name, org, phone, wantId, role, reason} → 계정 등록 신청 (로그인 없이, 관리자 승인 후 발급)
 const crypto = require('crypto');
 const C = require('./_lib/core');
@@ -69,6 +70,18 @@ module.exports = async (req, res) => {
       u.fail = 0;u.lastLogin = Date.now();u.lastIp = ipm || null;await C.putDoc('users', id, u);
       await C.ledger({at:Date.now(), col:'users', id, op:'login', by:ipm || '-', doc:null});
       return C.send(res, 200, Object.assign(await issue(res, id, u), prev, {pwExpired}));
+    }
+    if (b.op === 'recover'){
+      if (!(await C.rateOk(req, 'recover'))) return C.send(res, 429, {error:'시도가 많습니다. 10분 뒤 다시 시도하세요.'});
+      if (!C.setupCodeOk(b.setupCode)){await C.ledger({at:Date.now(), col:'users', id:String(b.id || '').slice(0, 32), op:'recover_fail', by:C.clientIp(req).replace(/\.\d+$/, '.*'), doc:null});return C.send(res, 401, {error:'최초 설정 코드가 맞지 않습니다.'});}
+      const id = String(b.id || '').trim().toLowerCase();
+      const u = C.ID_OK.test(id) ? await C.getDoc('users', id) : null;
+      if (!u || u.role !== 'admin') return C.send(res, 400, {error:'센터 관리자 계정만 이 방법으로 복구할 수 있습니다.'});
+      if (!C.pwOk(b.newPw)) return C.send(res, 400, {error:'새 비밀번호는 ' + C.PW_RULE + '이어야 합니다.'});
+      Object.assign(u, C.newHash(b.newPw), {active:true, fail:0, lockedAt:null, mustChange:false, pwAt:Date.now(), tv:(u.tv || 0) + 1, updatedAt:Date.now()});
+      await C.putDoc('users', id, u);await C.redis(['SET', 'sys:admins', '1']);
+      await C.ledger({at:Date.now(), col:'users', id, op:'recover', by:C.clientIp(req).replace(/\.\d+$/, '.*'), doc:null});
+      return C.send(res, 200, await issue(res, id, u));
     }
     if (b.op === 'request'){
       if (!(await C.rateOk(req, 'request'))) return C.send(res, 429, {error:'신청이 많습니다. 10분 뒤 다시 시도하세요.'});
