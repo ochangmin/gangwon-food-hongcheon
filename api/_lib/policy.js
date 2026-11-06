@@ -9,7 +9,7 @@
 
 const SHARED_READ = ['orders', 'std_center', 'std_custom', 'courses'];
 // 회원·비밀번호 자료는 일반 자료 API로 절대 읽고 쓰지 않는다
-const RESERVED = ['users', 'sys', 'auth', 'sup_auth'];
+const RESERVED = ['users', 'user_req', 'sys', 'auth', 'sup_auth'];
 const SCHOOL_READ = ['del_day', 'daily', 'unload_hot'];
 const HIDDEN_FIELDS = {auth:['salt', 'hash', 'iter'], sup_auth:['salt', 'hash', 'iter']};
 const SUP_STATUS = ['발주접수', '출고준비', '출고확정'];

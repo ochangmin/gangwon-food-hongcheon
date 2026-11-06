@@ -10,7 +10,7 @@ module.exports = async (req, res) => {
     const u = await C.who(req);if (!u) return C.send(res, 401, {error:'login'});
     const b = await C.body(req);const op = b.op;
     if (op === 'list'){
-      const col = String(b.col || '');if (!C.COL_RE.test(col) || ['sys', 'users', 'sup_auth'].includes(col)) return C.send(res, 400, {error:'col'});
+      const col = String(b.col || '');if (!C.COL_RE.test(col) || ['sys', 'users', 'user_req', 'sup_auth'].includes(col)) return C.send(res, 400, {error:'col'});
       let docs = await C.listCol(col);
       docs = docs.filter(d => P.canRead(u, col, d.id, d.data));
       if (Array.isArray(b.where) && b.where.length === 3 && b.where[1] === '==') docs = docs.filter(d => d.data && d.data[b.where[0]] === b.where[2]);

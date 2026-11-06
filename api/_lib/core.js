@@ -91,8 +91,35 @@ const SESSION_MS = 12 * 3600e3;
 function sessionCookie(tok, maxAgeS){return `gs=${encodeURIComponent(tok)}; Path=/; HttpOnly;${process.env.COOKIE_INSECURE === '1' ? '' : ' Secure;'} SameSite=Lax; Max-Age=${maxAgeS}`;}
 const ID_OK = /^[a-z0-9][a-z0-9._-]{2,31}$/;
 const ROLES = ['admin', 'staff', 'viewer', 'sup', 'driver', 'school'];
-function pwOk(pw){pw = String(pw || '');return pw.length >= 10 && /[A-Za-z]/.test(pw) && /[0-9]/.test(pw);}
-function publicUser(id, u){return {id, name:u.name || '', role:u.role, sup:u.sup || null, driverId:u.driverId || null, sid:u.sid || null, active:u.active !== false, mustChange:!!u.mustChange, createdAt:u.createdAt || null, lastLogin:u.lastLogin || null, by:u.by || null};}
+// 비밀번호 규칙: 영문·숫자·특수문자를 모두 섞어 10자 이상 (보안성 검토 기준)
+function pwOk(pw){pw = String(pw || '');return pw.length >= 10 && pw.length <= 128 && /[A-Za-z]/.test(pw) && /[0-9]/.test(pw) && /[^A-Za-z0-9]/.test(pw);}
+const PW_RULE = '영문·숫자·특수문자를 모두 섞어 10자 이상';
+const LOCK_FAILS = 5;                 // 연속 실패 시 계정 잠금 (관리자 해제)
+const PW_MAX_AGE = 90 * 864e5;        // 비밀번호 사용 기간 90일
+// 서버에서 만드는 임시 비밀번호 (헷갈리는 글자 제외, 영문 대·소문자·숫자·특수문자 포함)
+function tempPw(){
+  const U = 'ABCDEFGHJKLMNPQRSTUVWXYZ', L = 'abcdefghjkmnpqrstuvwxyz', D = '23456789', S = '!@#$%*?';
+  const pick = a => a[crypto.randomInt(a.length)];
+  const chars = [pick(U), pick(L), pick(D), pick(S)];const all = U + L + D;
+  while (chars.length < 12) chars.push(pick(all));
+  for (let i = chars.length - 1; i > 0; i--){const j = crypto.randomInt(i + 1);[chars[i], chars[j]] = [chars[j], chars[i]];}
+  return chars.join('');
+}
+const clip = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
+// 계정 부가 정보: 소속·연락처·메모·사용 기한
+function profile(b, prev){
+  prev = prev || {};const o = {};
+  o.org = b.org != null ? clip(b.org, 60) : (prev.org || '');
+  o.phone = b.phone != null ? clip(b.phone, 20).replace(/[^0-9+\-() ]/g, '') : (prev.phone || '');
+  o.memo = b.memo != null ? clip(b.memo, 200) : (prev.memo || '');
+  if (b.expiresAt !== undefined){const t = b.expiresAt ? Number(new Date(b.expiresAt)) : null;o.expiresAt = t && isFinite(t) ? t : null;}
+  else o.expiresAt = prev.expiresAt || null;
+  return o;
+}
+function publicUser(id, u){return {id, name:u.name || '', role:u.role, sup:u.sup || null, driverId:u.driverId || null, sid:u.sid || null, active:u.active !== false, mustChange:!!u.mustChange,
+  createdAt:u.createdAt || null, lastLogin:u.lastLogin || null, lastIp:u.lastIp || null, by:u.by || null, updatedAt:u.updatedAt || null,
+  org:u.org || '', phone:u.phone || '', memo:u.memo || '', expiresAt:u.expiresAt || null,
+  locked:!!u.lockedAt, lockedAt:u.lockedAt || null, fails:u.fail || 0, pwAt:u.pwAt || null};}
 
 // 로그인 시도 제한: 같은 IP·계정 10분에 10회
 // 같은 IP·계정 10분 10회, 같은 계정(모든 IP 합산) 10분 30회. IP는 Vercel이 넣는 값만 사용(위조 불가)
@@ -144,4 +171,4 @@ async function ledgerTail(n){
   return rows.map(r => {const p1 = r.indexOf('|'), p2 = r.indexOf('|', p1 + 1);const payload = r.slice(p2 + 1);const body = payload.slice(payload.indexOf('|') + 1);let e = {};try{e = JSON.parse(body);}catch(x){}return Object.assign({hash:r.slice(0, p1)}, e);}).reverse();
 }
 
-module.exports = {dek, KEY_SRC, cookieTok, SESSION_MS, sessionCookie, ID_OK, ROLES, pwOk, publicUser, setupCodeOk, encReady, sha256, ledger, ledgerVerify, ledgerTail, configured, redis, pipeline, splitPath, getDoc, putDoc, delDoc, listCol, newHash, checkPw, sign, verify, who, rateOk, body, send, COL_RE};
+module.exports = {dek, KEY_SRC, cookieTok, SESSION_MS, sessionCookie, ID_OK, ROLES, pwOk, PW_RULE, LOCK_FAILS, PW_MAX_AGE, tempPw, profile, clip, clientIp, publicUser, setupCodeOk, encReady, sha256, ledger, ledgerVerify, ledgerTail, configured, redis, pipeline, splitPath, getDoc, putDoc, delDoc, listCol, newHash, checkPw, sign, verify, who, rateOk, body, send, COL_RE};

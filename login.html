@@ -9,6 +9,9 @@ body{font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Noto Sans K
 h1{margin:0 0 4px;font-size:22px;letter-spacing:-.3px}.sub{margin:0 0 18px;color:var(--ink2);font-size:13.5px;line-height:1.5}
 label{display:block;font-size:13px;font-weight:600;color:var(--ink2);margin-top:12px}
 input{display:block;width:100%;margin-top:6px;padding:12px 14px;font:500 16px/1.2 inherit;font-family:inherit;border:1.5px solid var(--line);border-radius:11px;outline:none}
+select{display:block;width:100%;margin-top:6px;padding:11px 12px;font:500 15px/1.2 inherit;font-family:inherit;border:1.5px solid var(--line);border-radius:11px;background:#fff}
+.alt{margin:12px 0 0;text-align:center;font-size:13px}.alt a{color:var(--accent);text-decoration:none;font-weight:600}
+.agree{display:flex;gap:8px;align-items:flex-start;font-weight:500;font-size:12px;line-height:1.5;margin-top:14px}.agree input{width:auto;margin:2px 0 0}
 input:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(11,136,147,.14)}
 .hint{font-size:12px;color:#8D9197;margin-top:5px}
 button.go{width:100%;margin-top:18px;padding:13px;border:none;border-radius:11px;background:var(--accent);color:#fff;font:700 15.5px/1 inherit;font-family:inherit;cursor:pointer}button.go:disabled{opacity:.6;cursor:wait}
@@ -26,12 +29,26 @@ button.go{width:100%;margin-top:18px;padding:13px;border:none;border-radius:11px
     <label for="id">아이디</label><input id="id" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
     <label for="pw">비밀번호</label><input id="pw" name="password" type="password" autocomplete="current-password" required>
     <button class="go">로그인</button>
+    <p class="alt"><a href="#" id="toReq">계정이 없나요? 계정 등록 신청</a></p>
+  </form>
+
+  <form id="fReq" hidden>
+    <p class="sub" style="margin:0">센터 관리자가 확인한 뒤 계정을 발급합니다. 발급되면 적어 주신 연락처로 아이디와 임시 비밀번호를 안내합니다.</p>
+    <label for="rqName">이름</label><input id="rqName" maxlength="40" autocomplete="name" required>
+    <label for="rqOrg">소속</label><input id="rqOrg" maxlength="60" placeholder="예: ○○초등학교, ○○영농조합, 학교급식지원센터" required>
+    <label for="rqPhone">연락처</label><input id="rqPhone" maxlength="20" inputmode="tel" autocomplete="tel" placeholder="010-0000-0000" required>
+    <label for="rqRole">필요한 권한</label><select id="rqRole"><option value="school">학교 (납품·검수 확인)</option><option value="sup">공급업체 (입고 등록)</option><option value="driver">배송 기사</option><option value="staff">센터 직원</option><option value="viewer">열람 전용</option></select>
+    <label for="rqId">희망 아이디 (선택)</label><input id="rqId" maxlength="32" autocapitalize="none" spellcheck="false" placeholder="영문 소문자·숫자 3~32자">
+    <label for="rqWhy">신청 사유 (선택)</label><input id="rqWhy" maxlength="200" placeholder="예: 학교 입고 검수서 확인">
+    <label class="agree"><input type="checkbox" id="rqAgree" required> 계정 발급을 위해 이름·소속·연락처를 수집·이용하는 데 동의합니다. (발급 후 계정 정보로 보관, 반려 시 30일 후 삭제)</label>
+    <button class="go">등록 신청</button>
+    <p class="alt"><a href="#" id="toLogin">로그인으로 돌아가기</a></p>
   </form>
 
   <form id="fChange" hidden>
-    <p class="sub" style="margin:0">처음 로그인했거나 비밀번호가 초기화되었습니다. 새 비밀번호를 정하세요.</p>
+    <p class="sub" style="margin:0" id="chWhy">처음 로그인했거나 비밀번호가 초기화되었습니다. 새 비밀번호를 정하세요.</p>
     <input type="text" name="username" id="chUser" autocomplete="username" hidden>
-    <label for="npw">새 비밀번호</label><input id="npw" type="password" autocomplete="new-password" required><div class="hint">영문·숫자를 섞어 10자 이상</div>
+    <label for="npw">새 비밀번호</label><input id="npw" type="password" autocomplete="new-password" required><div class="hint">영문·숫자·특수문자를 모두 섞어 10자 이상</div>
     <label for="npw2">새 비밀번호 확인</label><input id="npw2" type="password" autocomplete="new-password" required>
     <button class="go">비밀번호 바꾸고 들어가기</button>
   </form>
@@ -41,7 +58,7 @@ button.go{width:100%;margin-top:18px;padding:13px;border:none;border-radius:11px
     <label for="sc">최초 설정 코드</label><input id="sc" type="password" autocomplete="off" required>
     <label for="sid">관리자 아이디</label><input id="sid" autocomplete="username" autocapitalize="none" spellcheck="false" required><div class="hint">영문 소문자·숫자 3~32자</div>
     <label for="sname">이름</label><input id="sname" value="센터 관리자">
-    <label for="spw">비밀번호</label><input id="spw" type="password" autocomplete="new-password" required><div class="hint">영문·숫자를 섞어 10자 이상</div>
+    <label for="spw">비밀번호</label><input id="spw" type="password" autocomplete="new-password" required><div class="hint">영문·숫자·특수문자를 모두 섞어 10자 이상</div>
     <button class="go">관리자 계정 만들기</button>
   </form>
 
@@ -55,12 +72,13 @@ button.go{width:100%;margin-top:18px;padding:13px;border:none;border-radius:11px
   const $ = id => document.getElementById(id);const msg = (t, ok) => {$('m').textContent = t || '';$('m').className = 'msg' + (ok ? ' ok' : '');};
   const call = async (body, tok) => {const r = await fetch('/api/auth', {method:'POST', credentials:'same-origin', headers:Object.assign({'Content-Type':'application/json'}, tok ? {Authorization:'Bearer ' + tok} : {}), body:JSON.stringify(body)});
     let j = {};try{j = await r.json();}catch(e){}if (!r.ok) throw new Error(j.error || ('오류 ' + r.status));return j;};
-  const show = id => ['fLogin', 'fChange', 'fSetup', 'fOff'].forEach(x => $(x).hidden = x !== id);
+  const show = id => ['fLogin', 'fChange', 'fSetup', 'fOff', 'fReq'].forEach(x => $(x).hidden = x !== id);
   let pending = null, curPw = '';
   // 로그인 결과를 화면 앱이 쓰는 형식으로 저장하고 역할별 첫 화면으로 이동
   function enter(j){
     try{
       localStorage.setItem('gfl:rt', JSON.stringify({token:j.token, role:j.role, id:j.id, name:j.name, sup:j.sup, driverId:j.driverId, sid:j.sid, veh:j.veh, exp:j.exp - 60e3}));
+      if (j.prevLogin || pending?.prevLogin) sessionStorage.setItem('gfl:prev', JSON.stringify({at:j.prevLogin || pending.prevLogin, ip:j.prevIp || pending?.prevIp || ''}));
       localStorage.removeItem('gfl:sess');sessionStorage.removeItem('gfl:out');
       if (j.role === 'driver' && j.driverId) localStorage.setItem('gfl:sess', JSON.stringify({driverId:j.driverId, exp:j.exp, at:Date.now()}));
       if (j.role === 'sup' && j.sup) sessionStorage.setItem('gfl:sup', JSON.stringify({id:j.id, sup:j.sup, exp:j.exp}));
@@ -72,7 +90,7 @@ button.go{width:100%;margin-top:18px;padding:13px;border:none;border-radius:11px
   const busy = (f, on) => f.querySelectorAll('button').forEach(b => b.disabled = on);
   $('fLogin').addEventListener('submit', async e => {e.preventDefault();busy(e.target, true);msg('');
     try{const pw = $('pw').value;const j = await call({op:'login', id:$('id').value.trim(), pw});
-      if (j.mustChange){pending = j;curPw = pw;$('chUser').value = j.id;show('fChange');$('sub').textContent = j.name + ' 님, 환영합니다.';$('npw').focus();}
+      if (j.mustChange){pending = j;curPw = pw;$('chUser').value = j.id;show('fChange');$('sub').textContent = j.name + ' 님, 환영합니다.';if (j.pwExpired) $('chWhy').textContent = '비밀번호를 사용한 지 90일이 지났습니다. 보안을 위해 새 비밀번호로 바꾸세요.';$('npw').focus();}
       else enter(j);}
     catch(x){msg(x.message);$('pw').value = '';$('pw').focus();}finally{busy(e.target, false);}});
   $('fChange').addEventListener('submit', async e => {e.preventDefault();msg('');
@@ -81,6 +99,12 @@ button.go{width:100%;margin-top:18px;padding:13px;border:none;border-radius:11px
     catch(x){msg(x.message);}finally{busy(e.target, false);}});
   $('fSetup').addEventListener('submit', async e => {e.preventDefault();busy(e.target, true);msg('');
     try{const j = await call({op:'setup', setupCode:$('sc').value, id:$('sid').value.trim(), name:$('sname').value.trim(), pw:$('spw').value});$('sc').value = '';enter(j);}
+    catch(x){msg(x.message);}finally{busy(e.target, false);}});
+  $('toReq').addEventListener('click', e => {e.preventDefault();msg('');show('fReq');$('sub').textContent = '계정 등록 신청';$('rqName').focus();});
+  $('toLogin').addEventListener('click', e => {e.preventDefault();msg('');show('fLogin');$('sub').textContent = '학교급식 먹거리 통합 관제 · 센터에서 발급한 계정으로 로그인하세요.';$('id').focus();});
+  $('fReq').addEventListener('submit', async e => {e.preventDefault();busy(e.target, true);msg('');
+    try{await call({op:'request', name:$('rqName').value.trim(), org:$('rqOrg').value.trim(), phone:$('rqPhone').value.trim(), role:$('rqRole').value, wantId:$('rqId').value.trim(), reason:$('rqWhy').value.trim()});
+      e.target.reset();show('fLogin');msg('등록 신청을 접수했습니다. 센터 관리자가 확인한 뒤 연락드립니다.', true);}
     catch(x){msg(x.message);}finally{busy(e.target, false);}});
   (async () => {
     if (new URLSearchParams(location.search).has('out')){try{await call({op:'logout'});}catch(e){}try{localStorage.removeItem('gfl:rt');localStorage.removeItem('gfl:sess');sessionStorage.removeItem('gfl:sup');}catch(e){}msg('로그아웃했습니다.', true);}
