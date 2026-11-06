@@ -1,0 +1,29 @@
+{
+  "name": "gangwon-meal-eum",
+  "version": "0.1.0",
+  "private": true,
+  "description": "강원 먹거리 이음 — 학교급식 수발주 플랫폼",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test:db": "node supabase/tests/workflow.test.mjs",
+    "seed:users": "node scripts/create-demo-users.mjs"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.7.0",
+    "@supabase/supabase-js": "^2.57.4",
+    "next": "^15.5.4",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.7",
+    "@types/node": "^22.18.1",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "pg": "^8.16.3",
+    "typescript": "^5.9.2"
+  }
+}

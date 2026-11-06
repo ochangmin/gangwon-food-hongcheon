@@ -1,0 +1,124 @@
+/* 업무 콘솔: 상단 바 + 좌측 업무 메뉴 + 본문 */
+:root {
+  --bg: #F3F5F8; --surface: #FFFFFF; --sunk: #EBEEF3; --line: #D8DDE6; --fg: #18202E; --muted: #5B6476;
+  --accent: #2B47A3; --accent-soft: #E6EBF8; --on-accent: #FFFFFF;
+  --ok: #1C7348; --ok-soft: #E1F2E8; --warn: #9A5B00; --warn-soft: #FBEFD9; --bad: #AE2A20; --bad-soft: #FBE4E1;
+  --violet: #6A3FA0; --violet-soft: #EFE7F8;
+  --f-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0F131A; --surface: #161B24; --sunk: #1C2230; --line: #2A3242; --fg: #E5E9F1; --muted: #99A2B4;
+    --accent: #8FA7F2; --accent-soft: #1F2945; --on-accent: #0F131A;
+    --ok: #62C28F; --ok-soft: #173326; --warn: #E3AA4E; --warn-soft: #352812; --bad: #F2887E; --bad-soft: #3A1C1A;
+    --violet: #BC9BEA; --violet-soft: #2A2140; color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 14px; line-height: 1.5;
+  padding: 0 max(16px, env(safe-area-inset-right)) 40px max(16px, env(safe-area-inset-left)); }
+a { color: var(--accent); }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.mono { font-family: var(--f-mono); font-size: 12px; }
+.dim { color: var(--muted); }
+.n, td.n, th.n { font-variant-numeric: tabular-nums; text-align: right; }
+
+.app { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 0 24px; max-width: 1480px; margin: 0 auto; }
+.top { grid-column: 1 / -1; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding-block: 14px;
+  border-bottom: 1px solid var(--line); margin-bottom: 20px; }
+.brand { display: flex; align-items: center; gap: 10px; margin-right: auto; }
+.brand b { font-size: 17px; }
+.brand small { display: block; color: var(--muted); font-size: 12px; line-height: 1.2; }
+.who { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+.role { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+
+nav { position: sticky; top: 16px; align-self: start; display: flex; flex-direction: column; gap: 14px; }
+nav .g { display: flex; flex-direction: column; gap: 2px; }
+nav .gl { font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--muted); padding: 0 10px 4px; }
+nav a { padding: 7px 10px; border-radius: 5px; color: var(--fg); text-decoration: none; }
+nav a:hover { background: var(--sunk); }
+nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+main { min-width: 0; }
+
+.ph { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.crumb { font-size: 12px; color: var(--muted); }
+h1 { font-size: 22px; margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+h2 { font-size: 15px; margin: 0; }
+.umji { font-family: var(--f-mono); font-size: 11px; color: var(--muted); border: 1px dashed var(--line); border-radius: 4px; padding: 2px 7px; }
+.lede { color: var(--muted); margin: 0 0 16px; max-width: 72ch; }
+.flash { background: var(--ok-soft); color: var(--ok); padding: 9px 12px; border-radius: 6px; margin: 0 0 14px; }
+.flash.bad { background: var(--bad-soft); color: var(--bad); }
+.empty { color: var(--muted); padding: 18px 14px; margin: 0; }
+
+.bar, .datebar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.bar .sp { flex: 1; }
+.btn { display: inline-flex; align-items: center; cursor: pointer; border: 1px solid var(--line); background: var(--surface);
+  border-radius: 5px; padding: 6px 12px; font-size: 13px; font-weight: 500; color: var(--fg); text-decoration: none; }
+.btn:hover { border-color: var(--muted); }
+.btn.pri { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.dan { color: var(--bad); border-color: var(--bad); }
+input[type=text], input[type=number], input[type=date], input[type=email], input[type=password], select, textarea {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 6px 8px; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; min-width: 0; margin-bottom: 16px; }
+.panel > header { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.panel > header small { color: var(--muted); }
+.pad { padding: 14px; }
+.tw { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th { font-weight: 600; color: var(--muted); font-size: 12px; text-align: left; background: var(--sunk); padding: 7px 10px; white-space: nowrap; border-bottom: 1px solid var(--line); }
+td { padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+tfoot td { font-weight: 600; background: var(--sunk); border-top: 1px solid var(--line); }
+td input.q { width: 80px; text-align: right; padding: 4px 6px; font-variant-numeric: tabular-nums; }
+td.wrap { white-space: normal; min-width: 200px; }
+
+.pill { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.s-draft, .s-issued, .s-waiting, .s-canceled { background: var(--sunk); color: var(--muted); }
+.s-submitted, .s-acknowledged, .s-open { background: var(--accent-soft); color: var(--accent); }
+.s-confirmed, .s-in_progress { background: var(--accent-soft); color: var(--accent); }
+.s-received, .s-departed { background: var(--warn-soft); color: var(--warn); }
+.s-shipped { background: var(--violet-soft); color: var(--violet); }
+.s-delivered, .s-arrived, .s-closed { background: var(--ok-soft); color: var(--ok); }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.kpi .l { font-size: 12px; color: var(--muted); }
+.kpi .v { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.kpi .v small { font-size: 13px; color: var(--muted); font-weight: 500; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; }
+.form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; align-items: end; }
+.form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.form .wide { grid-column: 1 / -1; }
+textarea { width: 100%; font-family: var(--f-mono); font-size: 12px; min-height: 160px; }
+details > summary { cursor: pointer; }
+
+.login { max-width: 380px; margin: 12vh auto 0; }
+.login .panel { padding: 22px; }
+.login label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; font-size: 13px; color: var(--muted); }
+
+/* 거래명세서 인쇄 */
+.stmt h2.t { text-align: center; font-size: 20px; letter-spacing: .4em; margin: 6px 0; }
+.stmt .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+.stmt .parties div { border: 1px solid var(--line); border-radius: 5px; padding: 8px 10px; }
+.stmt .parties b { display: block; font-size: 11px; color: var(--muted); }
+@media print {
+  body { background: #fff; color: #000; padding: 0; }
+  .top, nav, .noprint, .flash { display: none !important; }
+  .app { display: block; }
+  .panel { border: 0; }
+}
+@media (max-width: 860px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  nav { position: static; flex-direction: row; overflow-x: auto; gap: 4px; margin-bottom: 14px; }
+  nav .g { flex-direction: row; }
+  nav .gl { display: none; }
+  nav a { white-space: nowrap; }
+  .stmt .parties { grid-template-columns: 1fr; }
+}
