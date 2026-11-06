@@ -65,7 +65,30 @@ if (-not (Test-Path '.local-ready')) {
   New-Item -ItemType File '.local-ready' -Force | Out-Null
 }
 
-if (-not (Test-Path '.next\BUILD_ID') -or $args -contains '-Rebuild') {
+Step '로그인 점검 (홍천센터 데모 계정)'
+try {
+  $body = @{ email = 'hongcheon@demo.eum'; password = $DemoPw } | ConvertTo-Json
+  $r = Invoke-RestMethod -Method Post -Uri "$url/auth/v1/token?grant_type=password" -Headers @{ apikey = $anon } -ContentType 'application/json' -Body $body
+  if ($r.access_token) { Ok '로그인 정상' }
+} catch {
+  $detail = $_.ErrorDetails.Message
+  Write-Host "   로그인 점검 실패: $detail" -ForegroundColor Red
+  if ($detail -match 'Invalid login') {
+    Write-Host '   데모 계정이 없는 것 같아 다시 만듭니다.' -ForegroundColor Yellow
+    $env:NEXT_PUBLIC_SUPABASE_URL = $url; $env:SUPABASE_SERVICE_ROLE_KEY = $svc; $env:DEMO_PASSWORD = $DemoPw
+    node scripts/create-demo-users.mjs
+  } elseif ($detail -match 'disabled') {
+    Fail '이메일 로그인이 꺼져 있습니다. stop-local.bat 실행 후 start-local.bat를 다시 실행하세요 (설정 변경은 재시작해야 반영됩니다).'
+  }
+}
+
+$needBuild = -not (Test-Path '.next\BUILD_ID') -or $args -contains '-Rebuild'
+if (-not $needBuild) {
+  $built = (Get-Item '.next\BUILD_ID').LastWriteTime
+  $newest = Get-ChildItem -Recurse -File -Path app, lib, components, middleware.ts, package.json | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if ($newest.LastWriteTime -gt $built) { $needBuild = $true }
+}
+if ($needBuild) {
   Step '웹 빌드 (1~2분)'
   npm run build
   if ($LASTEXITCODE -ne 0) { Fail '빌드에 실패했습니다. 위 오류 내용을 알려주세요.' }

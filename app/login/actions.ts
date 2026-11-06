@@ -8,7 +8,14 @@ export async function signIn(fd: FormData) {
     email: String(fd.get('email') ?? ''),
     password: String(fd.get('password') ?? ''),
   });
-  if (error) redirect('/login?err=' + encodeURIComponent('이메일 또는 비밀번호가 맞지 않습니다'));
+  if (error) {
+    const m = /invalid login credentials/i.test(error.message)
+      ? '이메일 또는 비밀번호가 맞지 않습니다'
+      : /fetch failed|ECONNREFUSED/i.test(error.message)
+        ? '로그인 서버(Supabase)에 연결할 수 없습니다. Docker Desktop과 start-local.bat 실행 상태를 확인하세요'
+        : '로그인 실패: ' + error.message;
+    redirect('/login?err=' + encodeURIComponent(m));
+  }
   redirect('/');
 }
 
