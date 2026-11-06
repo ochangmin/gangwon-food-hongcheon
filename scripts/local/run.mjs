@@ -81,25 +81,46 @@ if (needBuild) {
   fs.writeFileSync(stamp, envHash);
 }
 
+const logFile = path.join(root, 'local-run.log');
+fs.writeFileSync(logFile, `[${new Date().toISOString()}] start web=${WEB_PORT} db=${SB_PORT}\n`);
+const log = (m) => fs.appendFileSync(logFile, m);
+say(`\n▶ 웹 서버 시작 (포트 ${WEB_PORT})`);
+const web = spawn(process.execPath, [nextBin, 'start', '-p', String(WEB_PORT), '-H', '127.0.0.1'], { env: { ...process.env, NEXT_TELEMETRY_DISABLED: '1' } });
+web.stdout.on('data', (d) => { process.stdout.write(d); log(d); });
+web.stderr.on('data', (d) => { process.stderr.write(d); log(d); });
+
+// 실제로 응답하는지 확인한 뒤 주소를 안내
+let ready = false;
+for (let i = 0; i < 60 && !ready; i++) {
+  await new Promise((r) => setTimeout(r, 1000));
+  try {
+    const r = await fetch(`http://127.0.0.1:${WEB_PORT}/login`);
+    ready = r.status < 500;
+    if (!ready) log(`readiness status ${r.status}\n`);
+  } catch (e) { log(`readiness ${e.message}\n`); }
+}
+if (!ready) {
+  say('  [실패] 웹 서버가 60초 안에 응답하지 않았습니다. 이 폴더의 local-run.log 파일을 보내주세요.');
+  web.kill();
+  await sb.close();
+  process.exit(1);
+}
+const URL_ = `http://127.0.0.1:${WEB_PORT}`;
 say('\n=================================================================');
 say('  강원 먹거리 이음 · 로컬 실행 (Docker 없이)');
-say(`  주소       http://localhost:${WEB_PORT}`);
+say(`  주소       ${URL_}   ← 이 주소를 브라우저에 입력하세요`);
 say(`  비밀번호   ${DEMO_PW}  (모든 데모 계정 공통)`);
 say('  홍천센터   hongcheon@demo.eum      홍천초 영양교사  s101@demo.eum');
 say('  공급업체   p01@demo.eum            도 관리자        province@demo.eum');
 say('  춘천센터   chuncheon@demo.eum');
 say(`  umji 수집 토큰  ${token}`);
 say('  데이터 저장 위치  .localdb 폴더 (지우면 처음 상태로 돌아갑니다)');
+say('  주의: 이 검은 창 안을 클릭하면 서버가 멈출 수 있습니다. 멈추면 창에서 Enter를 누르세요.');
 say('  끝내려면 이 창을 닫거나 Ctrl+C');
 say('=================================================================\n');
-
-const web = spawn(process.execPath, [nextBin, 'start', '-p', String(WEB_PORT)], { stdio: 'inherit', env: { ...process.env, NEXT_TELEMETRY_DISABLED: '1' } });
 if (!process.argv.includes('--no-open')) {
-  setTimeout(() => {
-    const u = `http://localhost:${WEB_PORT}`;
-    if (isWin) spawn('cmd', ['/c', 'start', '', u], { stdio: 'ignore', detached: true });
-    else if (process.platform === 'darwin') spawn('open', [u], { stdio: 'ignore', detached: true });
-  }, 3000);
+  if (isWin) spawn('cmd', ['/c', 'start', '', URL_], { stdio: 'ignore', detached: true });
+  else if (process.platform === 'darwin') spawn('open', [URL_], { stdio: 'ignore', detached: true });
 }
 const stop = async () => {
   web.kill();
@@ -109,7 +130,7 @@ const stop = async () => {
 process.on('SIGINT', stop);
 process.on('SIGTERM', stop);
 web.on('exit', async (code) => {
-  if (code) say(`  웹 서버가 종료되었습니다 (코드 ${code}). 실행 창의 오류 내용을 확인하세요.`);
+  say(`  웹 서버가 종료되었습니다 (코드 ${code}). local-run.log 파일을 보내주세요.`);
   await sb.close();
   process.exit(code ?? 0);
 });
