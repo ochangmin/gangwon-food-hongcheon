@@ -1987,8 +1987,11 @@ select id, 4200, 3700, '2026-09-01' from public.items where center_id = '1111111
 
 -- ===== 데모 계정 (비밀번호는 아래 한 곳에서만 지정) =====
 do $$
-declare pw text := 'Eum-jote3utSVE!';
+declare pw text := '여기에_비밀번호를_입력';  -- ← 실행 전에 원하는 비밀번호(10자 이상)로 바꾸세요
 begin
+  if pw = '여기에_비밀번호를_입력' or length(pw) < 10 then
+    raise exception '설치 SQL 맨 아래의 데모 계정 비밀번호(pw)를 10자 이상으로 바꾼 뒤 다시 실행하세요';
+  end if;
   insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, email_change, email_change_token_new, recovery_token)
   values ('00000000-0000-0000-0000-000000000000', 'aaaaaaaa-0000-4000-8000-000000000001', 'authenticated', 'authenticated', 'province@eum.demo', extensions.crypt(pw, extensions.gen_salt('bf')), now(),
           '{"provider":"email","providers":["email"]}', '{}', now(), now(), '', '', '', '');

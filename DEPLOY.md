@@ -2,7 +2,7 @@
 
 ## 1. Supabase (DB·로그인)
 1. https://supabase.com 에서 New project 생성 (Region: Northeast Asia (Seoul))
-2. 왼쪽 **SQL Editor → New query** 에 `supabase/setup-all.sql` 전체를 붙여넣고 **Run**
+2. 왼쪽 **SQL Editor → New query** 에 `supabase/setup-all.sql` 전체를 붙여넣고, 맨 아래 `declare pw text := '여기에_비밀번호를_입력'` 을 원하는 비밀번호(10자 이상)로 바꾼 뒤 **Run**
    - 테이블·권한·업무 함수·예시 데이터·데모 계정 5개가 한 번에 만들어집니다.
 3. **Project Settings → API** 에서 세 값을 복사해 둡니다.
    - Project URL
@@ -27,4 +27,4 @@ Vercel 프로젝트 → Settings → Domains 에 `급식.shop` 추가 → 안내
 
 ## 데모 계정
 province@eum.demo · hongcheon@eum.demo · chuncheon@eum.demo · s101@eum.demo · p01@eum.demo
-비밀번호는 setup-all.sql 의 `declare pw text := '...'` 값입니다. 실제 운영 전 비밀번호를 바꾸거나 데모 계정을 지우세요.
+비밀번호는 설치할 때 직접 입력한 값입니다. 이 저장소는 공개 저장소이므로 비밀번호를 파일에 저장해 커밋하지 마세요.
