@@ -2,7 +2,7 @@
 
 ## 1. Supabase (DB·로그인)
 1. https://supabase.com 에서 New project 생성 (Region: Northeast Asia (Seoul))
-2. 왼쪽 **SQL Editor → New query** 에 `supabase/setup-all.sql` 전체를 붙여넣고, 맨 아래 `declare pw text := '여기에_비밀번호를_입력'` 을 원하는 비밀번호(10자 이상)로 바꾼 뒤 **Run**
+2. 왼쪽 **SQL Editor → New query** 에 `supabase/setup-all.sql` 전체를 붙여넣고, **Run** (데모 계정 비밀번호는 무작위로 만들어져 실행 결과에 표시됩니다. 직접 정하려면 맨 아래 `'여기에_비밀번호를_입력'`을 바꾸세요)
    - 테이블·권한·업무 함수·예시 데이터·데모 계정 5개가 한 번에 만들어집니다.
 3. **Project Settings → API** 에서 세 값을 복사해 둡니다.
    - Project URL

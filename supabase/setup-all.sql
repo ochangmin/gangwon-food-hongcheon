@@ -1987,11 +1987,13 @@ select id, 4200, 3700, '2026-09-01' from public.items where center_id = '1111111
 
 -- ===== 데모 계정 (비밀번호는 아래 한 곳에서만 지정) =====
 do $$
-declare pw text := '여기에_비밀번호를_입력';  -- ← 실행 전에 원하는 비밀번호(10자 이상)로 바꾸세요
+declare pw text := '여기에_비밀번호를_입력';  -- 바꾸지 않으면 무작위 비밀번호를 만들어 실행 결과에 보여줍니다
 begin
   if pw = '여기에_비밀번호를_입력' or length(pw) < 10 then
-    raise exception '설치 SQL 맨 아래의 데모 계정 비밀번호(pw)를 10자 이상으로 바꾼 뒤 다시 실행하세요';
+    pw := 'Eum-' || substr(md5(random()::text || clock_timestamp()::text), 1, 10) || '!';
   end if;
+  create temp table if not exists _eum_demo_pw (비밀번호 text);
+  insert into _eum_demo_pw values (pw);
   insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, email_change, email_change_token_new, recovery_token)
   values ('00000000-0000-0000-0000-000000000000', 'aaaaaaaa-0000-4000-8000-000000000001', 'authenticated', 'authenticated', 'province@eum.demo', extensions.crypt(pw, extensions.gen_salt('bf')), now(),
           '{"provider":"email","providers":["email"]}', '{}', now(), now(), '', '', '', '');
@@ -2023,3 +2025,6 @@ begin
   values (gen_random_uuid(), 'aaaaaaaa-0000-4000-8000-000000000005', 'aaaaaaaa-0000-4000-8000-000000000005', jsonb_build_object('sub', 'aaaaaaaa-0000-4000-8000-000000000005', 'email', 'p01@eum.demo', 'email_verified', true), 'email', now(), now(), now());
   insert into public.profiles (id, name, role, center_id, school_id, supplier_id) values ('aaaaaaaa-0000-4000-8000-000000000005', '내면 고랭지작목반', 'supplier', '11111111-0000-0000-0000-000000000001', null, (select id from public.suppliers where code='P01' and center_id='11111111-0000-0000-0000-000000000001'));
 end $$;
+
+-- 데모 계정 비밀번호 (이 결과를 보관하세요)
+select 비밀번호, 'province@eum.demo · hongcheon@eum.demo · chuncheon@eum.demo · s101@eum.demo · p01@eum.demo' as 계정 from _eum_demo_pw;
