@@ -1,11 +1,12 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#12283F"><title>강원 먹거리 이음 · 로그인</title>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#12283F"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" href="/img/icon-192.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png"><title>강원 먹거리 이음 · 로그인</title>
 <style>
 :root{--navy:#12283F;--accent:#0B8893;--ink:#17263A;--ink2:#55626F;--line:#E3E9EC;--crit:#D3372E;--ok:#1E8E5A}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%}
 body{font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,sans-serif;background:linear-gradient(135deg,#12283F 0%,#183A4F 55%,#0E5F67 100%);color:var(--ink);display:grid;place-items:center;padding:20px;word-break:keep-all;min-height:100vh}
 .card{width:min(400px,100%);background:#fff;border-radius:18px;padding:28px 26px 20px;box-shadow:0 18px 48px rgba(0,0,0,.28)}
-.card img{height:36px;display:block;margin-bottom:12px}
+.card img{height:36px;display:block;margin-bottom:12px}.card img.logo{height:150px;margin:0 auto 6px}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+#sub{text-align:center}.ft .org{display:block;height:22px;margin:0 auto 6px}
 h1{margin:0 0 4px;font-size:22px;letter-spacing:-.3px}.sub{margin:0 0 18px;color:var(--ink2);font-size:13.5px;line-height:1.5}
 label{display:block;font-size:13px;font-weight:600;color:var(--ink2);margin-top:12px}
 input{display:block;width:100%;margin-top:6px;padding:12px 14px;font:500 16px/1.2 inherit;font-family:inherit;border:1.5px solid var(--line);border-radius:11px;outline:none}
@@ -22,9 +23,9 @@ button.go{width:100%;margin-top:18px;padding:13px;border:none;border-radius:11px
 [hidden]{display:none!important}
 </style></head><body>
 <main class="card">
-  <img src="img/org-logo.png" alt="" onerror="this.remove()">
-  <h1>강원 먹거리 이음</h1>
-  <p class="sub" id="sub">학교급식 먹거리 통합 관제 · 센터에서 발급한 계정으로 로그인하세요.</p>
+  <img class="logo" src="img/logo.png" alt="강원 먹거리 이음 — 학교급식 먹거리 통합 관제">
+  <h1 class="sr">강원 먹거리 이음</h1>
+  <p class="sub" id="sub">센터에서 발급한 계정으로 로그인하세요.</p>
 
   <form id="fLogin" hidden>
     <label for="id">아이디</label><input id="id" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
@@ -77,7 +78,7 @@ button.go{width:100%;margin-top:18px;padding:13px;border:none;border-radius:11px
   <div id="fOff" hidden><p class="sub" style="margin:0">회원 저장소가 아직 연결되지 않아 로그인 없이 열려 있습니다.</p><a class="go" href="/" style="display:block;text-align:center;text-decoration:none;margin-top:14px;padding:13px;border-radius:11px;background:var(--accent);color:#fff;font-weight:700">들어가기</a></div>
 
   <p class="msg" id="m" role="alert"></p>
-  <p class="ft">계정이 없거나 비밀번호를 잊었으면 센터 관리자에게 요청하세요. 공용 PC에서는 사용 후 로그아웃하세요.</p>
+  <p class="ft"><img class="org" src="img/org-logo.png" alt="홍천군" onerror="this.remove()">계정이 없거나 비밀번호를 잊었으면 센터 관리자에게 요청하세요. 공용 PC에서는 사용 후 로그아웃하세요.</p>
 </main>
 <script>
 (() => {
@@ -117,7 +118,7 @@ button.go{width:100%;margin-top:18px;padding:13px;border:none;border-radius:11px
     try{const j = await call({op:'setup', setupCode:$('sc').value, id:$('sid').value.trim(), name:$('sname').value.trim(), pw:$('spw').value});$('sc').value = '';enter(j);}
     catch(x){msg(x.message);}finally{busy(e.target, false);}});
   $('toReq').addEventListener('click', e => {e.preventDefault();msg('');show('fReq');$('sub').textContent = '계정 등록 신청';$('rqName').focus();});
-  $('toLogin').addEventListener('click', e => {e.preventDefault();msg('');show('fLogin');$('sub').textContent = '학교급식 먹거리 통합 관제 · 센터에서 발급한 계정으로 로그인하세요.';$('id').focus();});
+  $('toLogin').addEventListener('click', e => {e.preventDefault();msg('');show('fLogin');$('sub').textContent = '센터에서 발급한 계정으로 로그인하세요.';$('id').focus();});
   $('toRec').addEventListener('click', e => {e.preventDefault();msg('');show('fRec');$('sub').textContent = '관리자 계정 복구';$('rcId').value = $('id').value.trim();$('rcCode').focus();});
   document.querySelector('.toLogin2').addEventListener('click', e => {e.preventDefault();msg('');show('fLogin');$('id').focus();});
   $('fRec').addEventListener('submit', async e => {e.preventDefault();msg('');

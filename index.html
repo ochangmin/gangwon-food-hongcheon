@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#12283F"><script>window.VWORLD_KEY="774D0198-4B79-4E02-BC57-3EBF5C32024A"</script></head><body>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#12283F"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" href="/img/icon-192.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png"><script>window.VWORLD_KEY="774D0198-4B79-4E02-BC57-3EBF5C32024A"</script></head><body>
 <title>강원 먹거리 이음</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -691,6 +691,7 @@ h1,h2,h3{text-wrap:balance;margin:0}
 header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:1000;background:#FFFFFF;border-bottom:1px solid var(--line)}
 .top-in{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding-block:12px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 .brand{display:flex;align-items:baseline;gap:10px;min-width:0}
+.svc-logo{height:38px;width:auto;align-self:center;flex:none}.pt-bar .svc-logo{height:40px}
 .org-logo{height:30px;width:auto;align-self:center;object-fit:contain}
 .org-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 20px 18px;border-top:1px solid var(--line);background:var(--panel);color:var(--ink2);font-size:13px;font-weight:600}
 .driver-mode .org-foot{display:none}
@@ -1149,7 +1150,7 @@ body.portal-on{overflow:hidden}
 </style>
 
 <section class="portal" id="portal" hidden aria-label="강원 먹거리 이음 메인">
-  <div class="pt-bar"><img class="org-logo" data-org-logo alt="" hidden><b>강원 먹거리 이음</b><span class="small muted">학교급식 먹거리 통합 관제</span><span class="sp"></span><span class="pt-clock" id="ptClock"></span><span id="ptRt"></span><button class="btn sm" type="button" data-gwlock hidden>잠금</button></div>
+  <div class="pt-bar"><img class="svc-logo" src="img/logo-mark.png" alt=""><b>강원 먹거리 이음</b><span class="small muted">학교급식 먹거리 통합 관제</span><span class="sp"></span><span class="pt-clock" id="ptClock"></span><span id="ptRt"></span><button class="btn sm" type="button" data-gwlock hidden>잠금</button></div>
   <div class="pt-hero"><div class="pt-hero-in">
     <div><span class="pt-eyebrow"><i></i>홍천 학교급식 스마트 물류 · 실시간 운영</span>
       <h2>산지에서 학교 식판까지,<br><em>강원 먹거리</em>를 한 흐름으로 잇습니다</h2>
@@ -1179,7 +1180,7 @@ body.portal-on{overflow:hidden}
 </section>
 <header class="top">
   <div class="top-in">
-    <div class="brand"><img class="org-logo" data-org-logo alt="" hidden><h1>강원 먹거리 이음</h1><span>홍천 중심 · 강원 18개 시·군 먹거리 IoT 광역 관제</span></div>
+    <div class="brand"><img class="svc-logo" src="img/logo-mark.png" alt=""><h1>강원 먹거리 이음</h1><span>홍천 중심 · 강원 18개 시·군 먹거리 IoT 광역 관제</span></div>
     <div class="top-right">
       <span class="demo-tag">시연 데이터</span>
       <button class="btn sm" type="button" data-home title="메인 화면">메인</button><button class="btn sm" type="button" data-gwlock hidden title="이 기기에서 접속 코드 잠금">잠금</button><button class="btn sm" type="button" id="goDriver">기사 앱</button>
