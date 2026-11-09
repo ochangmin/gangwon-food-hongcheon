@@ -46,7 +46,7 @@ async function main(){
 
   const TYPES = {'.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.json':'application/json; charset=utf-8', '.txt':'text/plain; charset=utf-8',
     '.png':'image/png', '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.svg':'image/svg+xml', '.ico':'image/x-icon', '.webp':'image/webp', '.apk':'application/vnd.android.package-archive', '.woff2':'font/woff2'};
-  const PUBLIC_PATHS = /^\/(login(\.html)?|api\/auth|img\/(?:org-logo|logo|logo-mark|apple-touch-icon|icon-192)\.png|robots\.txt|favicon\.ico|vendor\/.*)$/;
+  const PUBLIC_PATHS = /^\/(login(\.html)?|api\/auth|img\/(?:org-logo|wordmark|wordmark-h|apple-touch-icon|icon-192)\.png|robots\.txt|favicon\.ico|vendor\/.*)$/;
   const secHeaders = (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');res.setHeader('Referrer-Policy', 'same-origin');res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('X-Robots-Tag', 'noindex, nofollow');res.setHeader('Permissions-Policy', 'camera=(), microphone=(), payment=(), usb=(), geolocation=(self), bluetooth=(self)');

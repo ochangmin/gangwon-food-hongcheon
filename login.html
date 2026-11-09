@@ -5,7 +5,7 @@
 *{box-sizing:border-box}html,body{margin:0;min-height:100%}
 body{font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,sans-serif;background:linear-gradient(135deg,#12283F 0%,#183A4F 55%,#0E5F67 100%);color:var(--ink);display:grid;place-items:center;padding:20px;word-break:keep-all;min-height:100vh}
 .card{width:min(400px,100%);background:#fff;border-radius:18px;padding:28px 26px 20px;box-shadow:0 18px 48px rgba(0,0,0,.28)}
-.card img{height:36px;display:block;margin-bottom:12px}.card img.logo{height:150px;margin:0 auto 6px}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.card img{height:36px;display:block;margin-bottom:12px}.card img.org-top{height:44px;margin:0 auto 14px}.wm{margin:0 0 4px}.wm img{display:block;width:100%;max-width:300px;height:auto;margin:0 auto}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 #sub{text-align:center}.ft .org{display:block;height:22px;margin:0 auto 6px}
 h1{margin:0 0 4px;font-size:22px;letter-spacing:-.3px}.sub{margin:0 0 18px;color:var(--ink2);font-size:13.5px;line-height:1.5}
 label{display:block;font-size:13px;font-weight:600;color:var(--ink2);margin-top:12px}
@@ -23,8 +23,8 @@ button.go{width:100%;margin-top:18px;padding:13px;border:none;border-radius:11px
 [hidden]{display:none!important}
 </style></head><body>
 <main class="card">
-  <img class="logo" src="img/logo.png" alt="강원 먹거리 이음 — 학교급식 먹거리 통합 관제">
-  <h1 class="sr">강원 먹거리 이음</h1>
+  <img class="org-top" src="img/org-logo.png" alt="홍천군" onerror="this.remove()">
+  <h1 class="wm"><img src="img/wordmark.png" alt="강원 먹거리 이음 — 학교급식 먹거리 통합 관제"></h1>
   <p class="sub" id="sub">센터에서 발급한 계정으로 로그인하세요.</p>
 
   <form id="fLogin" hidden>
@@ -78,7 +78,7 @@ button.go{width:100%;margin-top:18px;padding:13px;border:none;border-radius:11px
   <div id="fOff" hidden><p class="sub" style="margin:0">회원 저장소가 아직 연결되지 않아 로그인 없이 열려 있습니다.</p><a class="go" href="/" style="display:block;text-align:center;text-decoration:none;margin-top:14px;padding:13px;border-radius:11px;background:var(--accent);color:#fff;font-weight:700">들어가기</a></div>
 
   <p class="msg" id="m" role="alert"></p>
-  <p class="ft"><img class="org" src="img/org-logo.png" alt="홍천군" onerror="this.remove()">계정이 없거나 비밀번호를 잊었으면 센터 관리자에게 요청하세요. 공용 PC에서는 사용 후 로그아웃하세요.</p>
+  <p class="ft">계정이 없거나 비밀번호를 잊었으면 센터 관리자에게 요청하세요. 공용 PC에서는 사용 후 로그아웃하세요.</p>
 </main>
 <script>
 (() => {

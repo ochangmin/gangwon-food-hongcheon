@@ -1,7 +1,7 @@
 // 급식.shop 로그인 관문 (Vercel Edge)
 // 회원 저장소(Upstash)가 연결되면, 로그인 세션 쿠키(gs)가 없는 요청은
 // 화면 대신 로그인 페이지로 보내고 자료·API는 401로 막는다. 설정 전에는 지금처럼 그대로 열어 둔다.
-export const config = {matcher: ['/((?!login|api/auth|img/(?:org-logo|logo|logo-mark|apple-touch-icon|icon-192)\\.png|robots\\.txt|favicon\\.ico).*)']};
+export const config = {matcher: ['/((?!login|api/auth|img/(?:org-logo|wordmark|wordmark-h|apple-touch-icon|icon-192)\\.png|robots\\.txt|favicon\\.ico).*)']};
 const te = new TextEncoder();
 const b64u = a => {let s = '';for (const x of a) s += String.fromCharCode(x);return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');};
 let SECRET = null;
